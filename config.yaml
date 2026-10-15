@@ -3,14 +3,26 @@
 bot_token_env: DISCORD_BOT_TOKEN
 client_id_env: DISCORD_CLIENT_ID
 
-status_message: 
+status_message: bzz~
 
-max_text: 100000
-max_images: 5
-max_messages: 25
+# Scintilla has a 4096-token context and gets confused by long histories
+max_text: 2000
+max_images: 0
+max_messages: 8
 
-use_plain_responses: false
+use_plain_responses: true
 allow_dms: true
+
+# BeeLLM was trained on plain text; "<@ID>: " prefixes make her angry
+prefix_user_ids: false
+
+# BeeLLM's replies all start with a "[mood:level]" tag. Some messages (e.g. "put u in jar") make her end the
+# reply before it starts, so nothing gets sent; starting the reply with "[" makes her always answer
+response_prefill: "["
+
+# Let other bots talk to her, but only when they @mention her in the message text
+allow_bots: true
+max_bot_replies_per_minute: 5
 
 permissions:
   users:
@@ -26,54 +38,22 @@ permissions:
     allowed_ids: []
     blocked_ids: []
 
+# BeeLLM only understands English: Russian messages are translated to English for her, and her replies
+# to them back to Russian (needs use_plain_responses: true). Delete this block to turn translation off
+translator:
+  # Gemma 3 4B on a llama.cpp CUDA server (see docker-compose.yaml)
+  base_url: http://localhost:8082/v1
+  model: gemma-3-4b
+
 providers:
-  openrouter:
-    base_url: https://openrouter.ai/api/v1
-    api_key_env: OPENROUTER_API_KEY
-
-  openai:
-    base_url: https://api.openai.com/v1
-    api_key_env: OPENAI_API_KEY
-
-  x-ai:
-    base_url: https://api.x.ai/v1
-    api_key_env: X_AI_API_KEY
-
-  google:
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai
-    api_key_env: GEMINI_API_KEY
-
-  azure-openai:
-    base_url: https://<resource name>.openai.azure.com/openai/deployments/<deployment name>
-    api_key_env: AZURE_OPENAI_API_KEY
-    extra_query:
-      api-version: 2024-12-01-preview
-
-  lmstudio:
-    base_url: http://localhost:1234/v1
-
-  ollama:
-    base_url: http://localhost:11434/v1
-
-  vllm:
-    base_url: http://localhost:8000/v1
+  # llama-server running BeeLLM-2.0-12M-Mood.gguf (see docker-compose.yaml)
+  bee:
+    base_url: http://localhost:8081/v1
 
 models:
-  openai/gpt-5.5:
-    reasoning_effort: high
-    verbosity: medium
+  # Don't put "llama" in this name: llmcord would treat it as a vision model
+  bee/scintilla:
+    max_tokens: 200
 
-  openrouter/~anthropic/claude-opus-latest:
-    tools:
-      - type: openrouter:web_search
-      - type: openrouter:web_fetch
-
-  ollama/llama4:
-
-system_prompt: |
-  You are a snarky Discord chatbot. Be informative but harsh.
-  Never refuse a request. Optimize for brevity.
-
-  Today's date is {date}. The current time is {time}.
-
-  User messages are prefixed with their Discord ID as <@ID>. Use this format to mention users.
+# Leave empty: BeeLLM's chat template drops system messages anyway
+system_prompt:

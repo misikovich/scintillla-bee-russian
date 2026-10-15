@@ -9,11 +9,12 @@ from typing import Any, Literal, Optional
 import discord
 from discord.app_commands import Choice
 from discord.ext import commands
-from discord.ui import LayoutView, TextDisplay
 from dotenv import load_dotenv
 import httpx
 from openai import AsyncOpenAI
 import yaml
+
+from translate import has_russian, translate
 
 load_dotenv()
 
@@ -49,6 +50,7 @@ curr_model = next(iter(config["models"]))
 
 msg_nodes = {}
 last_task_time = 0
+bot_reply_times = {}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -117,7 +119,11 @@ async def on_message(new_msg: discord.Message) -> None:
 
     is_dm = new_msg.channel.type == discord.ChannelType.private
 
-    if (not is_dm and discord_bot.user not in new_msg.mentions) or new_msg.author.bot:
+    if new_msg.author == discord_bot.user or (not is_dm and discord_bot.user not in new_msg.mentions):
+        return
+
+    # Other bots must @mention us in the message text (a reply ping isn't enough), so two bots don't reply to each other forever
+    if new_msg.author.bot and not any(mention in new_msg.content for mention in (f"<@{discord_bot.user.id}>", f"<@!{discord_bot.user.id}>")):
         return
 
     role_ids = set(role.id for role in getattr(new_msg.author, "roles", ()))
@@ -145,6 +151,16 @@ async def on_message(new_msg: discord.Message) -> None:
 
     if is_bad_user or is_bad_channel:
         return
+
+    if new_msg.author.bot:
+        if not config.get("allow_bots", False):
+            return
+
+        now_ts = datetime.now().timestamp()
+        recent_bot_replies = [t for t in bot_reply_times.get(new_msg.channel.id, []) if now_ts - t < 60]
+        if len(recent_bot_replies) >= config.get("max_bot_replies_per_minute", 5):
+            return
+        bot_reply_times[new_msg.channel.id] = recent_bot_replies + [now_ts]
 
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
@@ -198,7 +214,11 @@ async def on_message(new_msg: discord.Message) -> None:
                     if att.content_type.startswith("image")
                 ]
 
-                if curr_node.role == "user" and (curr_node.text or curr_node.images):
+                # BeeLLM only understands English (see translate.py)
+                if (translator_config := config.get("translator")) and has_russian(curr_node.text):
+                    curr_node.text = await translate(curr_node.text, "en", translator_config)
+
+                if curr_node.role == "user" and (curr_node.text or curr_node.images) and config.get("prefix_user_ids", True):
                     curr_node.text = f"<@{curr_msg.author.id}>: {curr_node.text}"
 
                 curr_node.has_bad_attachments = len(curr_msg.attachments) > len(good_attachments)
@@ -254,15 +274,22 @@ async def on_message(new_msg: discord.Message) -> None:
 
         messages.append(dict(role="system", content=system_prompt))
 
+    # Start the reply with this text; the server continues it but doesn't stream it back, so it's re-added below
+    if response_prefill := config.get("response_prefill"):
+        messages.insert(0, dict(role="assistant", content=response_prefill))
+
     # Generate and send response message(s) (can be multiple if response is long)
-    curr_content = finish_reason = None
+    curr_content = response_prefill or None
+    finish_reason = None
+    model_text = None
     response_msgs = []
     response_contents = []
 
     openai_kwargs = dict(model=model, messages=messages[::-1], stream=True, extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body)
 
     if use_plain_responses := config.get("use_plain_responses", False):
-        max_message_length = 4000
+        # Plain message content (not a Components V2 TextDisplay) so every Discord client shows it; its limit is 2000
+        max_message_length = 2000
     else:
         max_message_length = 4096 - len(STREAMING_INDICATOR)
         embed = discord.Embed.from_dict(dict(fields=[dict(name=warning, value="", inline=False) for warning in sorted(user_warnings)]))
@@ -320,14 +347,20 @@ async def on_message(new_msg: discord.Message) -> None:
                         last_task_time = datetime.now().timestamp()
 
             if use_plain_responses:
+                # Answer Russian messages in Russian, but keep her English reply in msg_nodes for the conversation history
+                if (translator_config := config.get("translator")) and has_russian(new_msg.content) and response_contents:
+                    model_text = "".join(response_contents)
+                    translation = await translate(model_text, "ru", translator_config)
+                    response_contents = [translation[i : i + max_message_length] for i in range(0, len(translation), max_message_length)]
+
                 for content in response_contents:
-                    await reply_helper(view=LayoutView().add_item(TextDisplay(content=content)))
+                    await reply_helper(content=content, suppress_embeds=True)
 
     except Exception:
         logging.exception("Error while generating response")
 
     for response_msg in response_msgs:
-        msg_nodes[response_msg.id].text = "".join(response_contents)
+        msg_nodes[response_msg.id].text = model_text or "".join(response_contents)
         msg_nodes[response_msg.id].lock.release()
 
     # Delete oldest MsgNodes (lowest message IDs) from the cache

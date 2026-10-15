@@ -1,10 +1,50 @@
 services:
-  container:
-    build: .
-    network_mode: host
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: -hf schizophyllume/BeeLLM -hff BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --host 0.0.0.0 --port 8081
     restart: unless-stopped
+    environment:
+      LLAMA_CACHE: /models
+    volumes:
+      - models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 10s
+      start_period: 60s
+
+  # Gemma 3 4B for Russian <-> English translation (see translate.py). Needs an NVIDIA GPU with ~3 GB VRAM and the
+  # NVIDIA Container Toolkit; if it's down, the bot keeps working without translation
+  translator:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command: -hf ggml-org/gemma-3-4b-it-GGUF:Q4_K_M --no-mmproj -ngl 99 -c 4096 -np 2 --jinja --host 0.0.0.0 --port 8082
+    # Share llama's network so the bot reaches it at localhost:8082
+    network_mode: service:llama
+    restart: unless-stopped
+    environment:
+      LLAMA_CACHE: /models
+    volumes:
+      - models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  bot:
+    build: .
+    # Share llama's network so the bot reaches it at localhost:8081, same as when running locally
+    network_mode: service:llama
+    restart: unless-stopped
+    depends_on:
+      llama:
+        condition: service_healthy
     env_file:
       - path: .env
         required: false
     volumes:
       - ./:/app:ro
+
+volumes:
+  models:
