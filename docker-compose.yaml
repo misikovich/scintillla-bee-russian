@@ -24,6 +24,13 @@ services:
       LLAMA_CACHE: /models
     volumes:
       - models:/models
+      # CUDA compiles its kernels for the GPU on the first request (~25 s on a GTX 1650 Ti); keep them across restarts
+      - cuda-cache:/root/.nv
+    # The image's own healthcheck probes port 8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 10s
+      start_period: 600s
     deploy:
       resources:
         reservations:
@@ -48,3 +55,4 @@ services:
 
 volumes:
   models:
+  cuda-cache:
