@@ -15,6 +15,8 @@ services:
   # Gemma 3 4B for Russian <-> English translation (see translate.py). Needs an NVIDIA GPU with ~3 GB VRAM and the
   # NVIDIA Container Toolkit; if it's down, the bot keeps working without translation
   translator:
+    # Off since 2026-11-10: the GPU now runs MiniCPM5-2B (~/minicpm5). Start with: docker compose --profile translator up -d
+    profiles: [translator]
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
     command: -hf ggml-org/gemma-3-4b-it-GGUF:Q4_K_M --no-mmproj -ngl 99 -c 4096 -np 2 --jinja --host 0.0.0.0 --port 8082
     # Share llama's network so the bot reaches it at localhost:8082
