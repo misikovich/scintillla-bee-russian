@@ -16,7 +16,7 @@ allow_dms: true
 # BeeLLM was trained on plain text; "<@ID>: " prefixes make her angry
 prefix_user_ids: false
 
-# BeeLLM's replies all start with a "[mood:level]" tag. Some messages (e.g. "put u in jar") make her end the
+# BeeLLM only (not bee_models): BeeLLM's replies all start with a "[mood:level]" tag. Some messages (e.g. "put u in jar") make her end the
 # reply before it starts, so nothing gets sent; starting the reply with "[" makes her always answer
 response_prefill: "["
 
@@ -47,14 +47,36 @@ permissions:
 #   model: gemma-3-4b
 
 providers:
+  # MiniCPM5-2B on llama.cpp CUDA (~/minicpm5 on this machine), reached on the host LAN IP
+  minicpm:
+    base_url: http://10.10.0.41:8083/v1
+    api_key_env: MINICPM_API_KEY
+
   # llama-server running BeeLLM-2.0-12M-Mood.gguf (see docker-compose.yaml)
   bee:
     base_url: http://localhost:8081/v1
 
 models:
+  # The first model is the default; /model switches (admins only once admin_ids is set)
+  # Sampling tested in bee-eval (Computers repo): thinking off (8 s and still wrong), temp 0.7, DRY stops her repeating
+  # the user's message back, 100 tokens is plenty for one or two phrases
+  minicpm/minicpm5-2b:
+    temperature: 0.7
+    top_p: 0.95
+    min_p: 0.0
+    dry_multiplier: 0.8
+    max_tokens: 100
+    chat_template_kwargs:
+      enable_thinking: false
+
   # Don't put "llama" in this name: llmcord would treat it as a vision model
   bee/scintilla:
     max_tokens: 200
+
+# Models that get Scintilla's MiniCPM prompt, examples and buzzing (bee.py); system_prompt and response_prefill are
+# skipped for them
+bee_models:
+  - minicpm/minicpm5-2b
 
 # Leave empty: BeeLLM's chat template drops system messages anyway
 system_prompt:

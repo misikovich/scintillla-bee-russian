@@ -14,6 +14,7 @@ import httpx
 from openai import AsyncOpenAI
 import yaml
 
+import bee
 from translate import has_russian, translate
 
 load_dotenv()
@@ -267,7 +268,11 @@ async def on_message(new_msg: discord.Message) -> None:
 
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
-    if system_prompt := config.get("system_prompt"):
+    # Scintilla on MiniCPM: her own prompt and examples, answers get the buzzing added afterwards (see bee.py)
+    if bee_mode := provider_slash_model in config.get("bee_models", []):
+        messages, bee_lang, bee_tone = bee.prepare(messages)
+
+    if (system_prompt := config.get("system_prompt")) and not bee_mode:
         now = datetime.now().astimezone()
 
         system_prompt = system_prompt.replace("{date}", now.strftime("%B %d %Y")).replace("{time}", now.strftime("%H:%M:%S %Z%z")).strip()
@@ -275,11 +280,11 @@ async def on_message(new_msg: discord.Message) -> None:
         messages.append(dict(role="system", content=system_prompt))
 
     # Start the reply with this text; the server continues it but doesn't stream it back, so it's re-added below
-    if response_prefill := config.get("response_prefill"):
+    if (response_prefill := config.get("response_prefill")) and not bee_mode:
         messages.insert(0, dict(role="assistant", content=response_prefill))
 
     # Generate and send response message(s) (can be multiple if response is long)
-    curr_content = response_prefill or None
+    curr_content = (response_prefill if not bee_mode else None) or None
     finish_reason = None
     model_text = None
     response_msgs = []
@@ -352,6 +357,11 @@ async def on_message(new_msg: discord.Message) -> None:
                     model_text = "".join(response_contents)
                     translation = await translate(model_text, "ru", translator_config)
                     response_contents = [translation[i : i + max_message_length] for i in range(0, len(translation), max_message_length)]
+
+                # She buzzes in Discord, but msg_nodes keeps her plain reply for the conversation history
+                if bee_mode and (model_text := bee.guard("".join(response_contents))):
+                    buzzed = bee.buzzify(model_text, bee_lang, bee_tone)
+                    response_contents = [buzzed[i : i + max_message_length] for i in range(0, len(buzzed), max_message_length)]
 
                 for content in response_contents:
                     await reply_helper(content=content, suppress_embeds=True)

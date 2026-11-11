@@ -1,12 +1,13 @@
 # bee-bot
 
-Discord bot "scintilla bee": a fork of [llmcord](https://github.com/jakobdylanc/llmcord) (git remote `upstream`)
-that chats using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
+Discord bot "scintilla bee": a fork of [llmcord](https://github.com/jakobdylanc/llmcord) (git remote `upstream`).
+Since 2026-11-11 she runs on MiniCPM5-2B (`bee.py`, see below); before that, and still selectable with `/model`, she chatted using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
 that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILLA.md` for setup.
 
 ## Layout
 
 - `llmcord.py`: the whole bot (upstream code plus small patches; keep the diff small so upstream merges stay easy)
+- `bee.py`: Scintilla on MiniCPM5-2B (prompt, examples, tone hints, `buzzify()`); used for models listed in `bee_models`
 - `translate.py`: Russian <-> English translation via a second llama-server (Gemma 3 4B, CUDA, :8082); kept out of `llmcord.py`
 - `config.yaml`: bee settings, hot-reloaded on every message
 - `docker-compose.yaml`: `llama` (llama.cpp server on :8081) + `translator` (llama.cpp CUDA on :8082, needs an NVIDIA GPU)
@@ -19,7 +20,22 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - Local: `llama-server -hf schizophyllume/BeeLLM -hff BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --port 8081`
   and `.venv/bin/python llmcord.py`
 
-## Model quirks
+## MiniCPM mode (default since 2026-11-11)
+
+- Model `minicpm/minicpm5-2b`: llama.cpp CUDA on this machine (`~/minicpm5`, `http://10.10.0.41:8083/v1`, key `MINICPM_API_KEY` in `.env`).
+  The bot reaches it on the host LAN IP. Thinking is off (`chat_template_kwargs`), temp 0.7, `dry_multiplier: 0.8`, 100 tokens.
+- Two stages: MiniCPM writes a short plain in-character reply, then `bee.buzzify()` adds the buzzing in code. Asking the model
+  to buzz itself made it much worse at understanding (facts 17/24 vs 23/24, memory 3/9 vs 8/9).
+- Discord gets the buzzed text; `msg_nodes` keeps the plain reply, and `bee.debuzz()` strips buzzing from history rebuilt from Discord.
+- Separate Russian and English prompts and few-shot examples (as chat turns, not in the system prompt), picked by the newest user
+  message with words in it. Mixed examples make her put English into Russian replies.
+- Keyword tone hints (insult / threat / kind) are added as a system message before the newest user message: MiniCPM misses Russian
+  insults on its own. Appended to the user's text instead, she reads the hint out loud.
+- `system_prompt` and `response_prefill` are skipped for `bee_models` (they're BeeLLM settings).
+- No "~~" in buzz words (Discord strikethrough). Don't add names to the examples (they leak into replies).
+- The eval scripts and results are in the Computers repo, `bee-eval/`.
+
+## Model quirks (BeeLLM)
 
 - Chat template is `<|user|>…<|bee|>…</s>` only: system messages are dropped, so `system_prompt` stays empty.
 - Any extra text in user turns derails her (the `<@ID>: ` prefix made every reply angry), hence `prefix_user_ids: false`.

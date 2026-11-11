@@ -33,6 +33,12 @@ uv venv && uv pip install -r requirements.txt && .venv/bin/python llmcord.py
 
 Talk to her by @mentioning her; reply to her messages to continue a conversation.
 
+## MiniCPM mode
+
+Since 2026-11-11 she runs on MiniCPM5-2B (`bee_models` in `config.yaml`, code in `bee.py`): the model writes a short, real
+answer in character and code adds the buzzing, so she can say "бзббзз сам иди нахуй, бзззбз жалом в глаз хочешь? бжжж" or
+"бзз... Париж, бззз". Switch back to BeeLLM with `/model bee/scintilla` (or by putting it first in `models:` and restarting).
+
 ## Changes from upstream
 
 - `prefix_user_ids: false` stops prefixing user messages with `<@ID>: `. BeeLLM was trained on
