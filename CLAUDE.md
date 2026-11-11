@@ -43,6 +43,8 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
   (`http://10.10.0.50:8317/v1`, key `CLIPROXY_API_KEY` in `.env`). ~0.5 s per reply; messages leave the LAN (to Mistral).
 - `one-stage`: the model buzzes itself from buzzing examples (separate RU/EN prompts). No tone hints, no `buzzify()`, history
   keeps her buzzing. Tested: facts 24/24, memory 9/9, understands slang and insults that MiniCPM misses.
+- Persona (2026-11-11): a rude, roasting old buddy ("охреневший кореш") who still buzzes in every phrase and panics at
+  slippers/jars/nets. Roasting examples alone made her buzz less and lose the fear, hence the explicit lines in the prompt.
 - Mistral answers 422 on unknown fields: no `dry_multiplier`, `min_p` or `chat_template_kwargs` in its model params.
 - If node-mbp's proxy or Mistral is down she doesn't answer (no automatic fallback). Then put `minicpm/minicpm5-2b`
   first in `models:` and restart: `/model` only works for `admin_ids`, which is empty, and the first model is read at startup.
