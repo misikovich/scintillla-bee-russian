@@ -55,11 +55,6 @@ permissions:
 #   model: gemma-3-4b
 
 providers:
-  # MiniCPM5-2B on llama.cpp CUDA (~/minicpm5 on this machine), reached on the host LAN IP
-  minicpm:
-    base_url: http://10.10.0.41:8083/v1
-    api_key_env: MINICPM_API_KEY
-
   # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); DeepSeek through Mistral's API
   cliproxy:
     base_url: http://10.10.0.50:8317/v1
@@ -71,34 +66,19 @@ providers:
 
 models:
   # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
-  # Default since 2026-11-11: DeepSeek. If node-mbp's proxy or Mistral is down she doesn't answer; move MiniCPM up then
-  # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI: ~0.5 s, much better Russian than MiniCPM, buzzes on its
-  # own (one-stage). Mistral rejects llama.cpp-only fields (dry_multiplier, min_p, chat_template_kwargs): don't add them
+  # Default since 2026-11-11: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI, ~0.5 s. If node-mbp's proxy or
+  # Mistral is down she doesn't answer. Mistral rejects fields it doesn't know (422 extra_forbidden)
   cliproxy/mistral/deepseek-v4-1-flash-1017:
     temperature: 0.7
     max_tokens: 150
-
-  # MiniCPM5-2B on this machine's GPU (local, fallback)
-  # Sampling tested in bee-eval (Computers repo): thinking off (8 s and still wrong), temp 0.7, DRY stops her repeating
-  # the user's message back, 100 tokens is plenty for one or two phrases
-  minicpm/minicpm5-2b:
-    temperature: 0.7
-    top_p: 0.95
-    min_p: 0.0
-    dry_multiplier: 0.8
-    max_tokens: 100
-    chat_template_kwargs:
-      enable_thinking: false
 
   # Don't put "llama" in this name: llmcord would treat it as a vision model
   bee/scintilla:
     max_tokens: 200
 
-# Models that get Scintilla's prompt and examples (bee.py), with their style: two-stage (plain reply, buzzing added by
-# code; for small models) or one-stage (the model buzzes itself). system_prompt and response_prefill are skipped for them
+# Models that get Scintilla's prompt and examples (bee.py); system_prompt and response_prefill are skipped for them
 bee_models:
-  minicpm/minicpm5-2b: two-stage
-  cliproxy/mistral/deepseek-v4-1-flash-1017: one-stage
+  - cliproxy/mistral/deepseek-v4-1-flash-1017
 
 # Leave empty: BeeLLM's chat template drops system messages anyway
 system_prompt:

@@ -33,12 +33,12 @@ uv venv && uv pip install -r requirements.txt && .venv/bin/python llmcord.py
 
 Talk to her by @mentioning her; reply to her messages to continue a conversation.
 
-## MiniCPM mode
+## DeepSeek mode
 
 Since 2026-11-11 she runs on DeepSeek v4.1 Flash (Mistral's API through CLIProxyAPI), which buzzes on its own and answers
-for real: "бззбз сам заткнись, бззз. жужжу как хочу, бжжж", "бзз, Париж, бззз. там мёд вкусный". The local fallback is
-MiniCPM5-2B, where the model writes a plain reply and code adds the buzzing. Both are in `bee_models` in `config.yaml`, code in
-`bee.py`. To switch (also back to BeeLLM, `bee/scintilla`): put the model first in `models:` and restart.
+for real: "бззбз сам заткнись, бззз. жужжу как хочу, бжжж", "бзз, Париж, бззз. там мёд вкусный". It's in `bee_models` in
+`config.yaml`, code in `bee.py`. To switch back to BeeLLM (`bee/scintilla`): put it first in `models:` and restart.
+(MiniCPM5-2B was a local second model from 2026-11-11 to 2026-11-12.)
 
 ## Changes from upstream
 

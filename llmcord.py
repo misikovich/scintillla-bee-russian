@@ -171,8 +171,8 @@ async def on_message(new_msg: discord.Message) -> None:
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
 
-    # Scintilla's models (bee.py): their prompt, examples and buzzing style
-    bee_style = (config.get("bee_models") or {}).get(provider_slash_model)
+    # Scintilla's models (bee.py): her own prompt and examples
+    bee_mode = provider_slash_model in (config.get("bee_models") or [])
 
     # Messages older than this are left out of conversations (a history reset; her in-memory cache only lasts until a
     # restart, the reply chains in Discord stay)
@@ -213,7 +213,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 curr_node.author_name = curr_msg.author.display_name
 
                 # Bee models read names, not IDs: "<@123>" -> "@Name" (her own mention is dropped)
-                if bee_style:
+                if bee_mode:
                     for user in curr_msg.mentions:
                         name = "" if user == discord_bot.user else f"@{user.display_name}"
                         cleaned_content = cleaned_content.replace(f"<@{user.id}>", name).replace(f"<@!{user.id}>", name)
@@ -281,7 +281,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 content = curr_node.text[:max_text]
 
             if content != "":
-                messages.append(dict(content=content, role=curr_node.role) | (dict(name=curr_node.author_name) if bee_style and curr_node.role == "user" else {}))
+                messages.append(dict(content=content, role=curr_node.role) | (dict(name=curr_node.author_name) if bee_mode and curr_node.role == "user" else {}))
 
             if len(curr_node.text) > max_text:
                 user_warnings.add(f"⚠️ Max {max_text:,} characters per message")
@@ -296,11 +296,10 @@ async def on_message(new_msg: discord.Message) -> None:
 
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
-    # Scintilla on a real model: her own prompt and examples; two-stage models get the buzzing added afterwards (see bee.py)
-    if bee_style:
-        messages, bee_lang, bee_tone = bee.prepare(messages, bee_style)
+    if bee_mode:
+        messages, _ = bee.prepare(messages)
 
-    if (system_prompt := config.get("system_prompt")) and not bee_style:
+    if (system_prompt := config.get("system_prompt")) and not bee_mode:
         now = datetime.now().astimezone()
 
         system_prompt = system_prompt.replace("{date}", now.strftime("%B %d %Y")).replace("{time}", now.strftime("%H:%M:%S %Z%z")).strip()
@@ -308,11 +307,11 @@ async def on_message(new_msg: discord.Message) -> None:
         messages.append(dict(role="system", content=system_prompt))
 
     # Start the reply with this text; the server continues it but doesn't stream it back, so it's re-added below
-    if (response_prefill := config.get("response_prefill")) and not bee_style:
+    if (response_prefill := config.get("response_prefill")) and not bee_mode:
         messages.insert(0, dict(role="assistant", content=response_prefill))
 
     # Generate and send response message(s) (can be multiple if response is long)
-    curr_content = (response_prefill if not bee_style else None) or None
+    curr_content = (response_prefill if not bee_mode else None) or None
     finish_reason = None
     model_text = None
     response_msgs = []
@@ -386,10 +385,9 @@ async def on_message(new_msg: discord.Message) -> None:
                     translation = await translate(model_text, "ru", translator_config)
                     response_contents = [translation[i : i + max_message_length] for i in range(0, len(translation), max_message_length)]
 
-                # She buzzes in Discord, but msg_nodes keeps her plain reply for the conversation history
-                if bee_style and (model_text := bee.guard("".join(response_contents))):
-                    buzzed = bee.buzzify(model_text, bee_lang, bee_tone) if bee_style == "two-stage" else model_text
-                    response_contents = [buzzed[i : i + max_message_length] for i in range(0, len(buzzed), max_message_length)]
+                # Loop guard and no "Сцинтилла:" label (see bee.py)
+                if bee_mode and (model_text := bee.guard("".join(response_contents))):
+                    response_contents = [model_text[i : i + max_message_length] for i in range(0, len(model_text), max_message_length)]
 
                 # Don't answer instantly: wait until min_reply_delay seconds after the message came in ("typing..." shows meanwhile)
                 if (wait := config.get("min_reply_delay", 0) - (asyncio.get_running_loop().time() - received_at)) > 0:

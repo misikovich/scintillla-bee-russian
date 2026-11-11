@@ -1,15 +1,13 @@
 # bee-bot
 
 Discord bot "scintilla bee": a fork of [llmcord](https://github.com/jakobdylanc/llmcord) (git remote `upstream`).
-Since 2026-11-11 she runs on DeepSeek v4.1 Flash via CLIProxyAPI, with MiniCPM5-2B as the local fallback (`bee.py`, see
-below); before that she chatted using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
+Since 2026-11-11 she runs on DeepSeek v4.1 Flash via CLIProxyAPI (`bee.py`, see below); before that she chatted using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
 that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILLA.md` for setup.
 
 ## Layout
 
 - `llmcord.py`: the whole bot (upstream code plus small patches; keep the diff small so upstream merges stay easy)
-- `bee.py`: Scintilla on a real model (prompts, examples, tone hints, `buzzify()`); used for models in `bee_models`, each
-  with a style: `two-stage` (MiniCPM) or `one-stage` (DeepSeek)
+- `bee.py`: Scintilla on DeepSeek (prompts, examples, names, speaker hint, loop guard); used for the models in `bee_models`
 - `translate.py`: Russian <-> English translation via a second llama-server (Gemma 3 4B, CUDA, :8082); kept out of `llmcord.py`
 - `config.yaml`: bee settings, hot-reloaded on every message
 - `docker-compose.yaml`: `llama` (llama.cpp server on :8081) + `translator` (llama.cpp CUDA on :8082, needs an NVIDIA GPU)
@@ -22,33 +20,23 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - Local: `llama-server -hf schizophyllume/BeeLLM -hff BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --port 8081`
   and `.venv/bin/python llmcord.py`
 
-## MiniCPM mode (default for a few hours on 2026-11-11, now the local fallback)
-
-- Model `minicpm/minicpm5-2b`: llama.cpp CUDA on this machine (`~/minicpm5`, `http://10.10.0.41:8083/v1`, key `MINICPM_API_KEY` in `.env`).
-  The bot reaches it on the host LAN IP. Thinking is off (`chat_template_kwargs`), temp 0.7, `dry_multiplier: 0.8`, 100 tokens.
-- Two stages: MiniCPM writes a short plain in-character reply, then `bee.buzzify()` adds the buzzing in code. Asking the model
-  to buzz itself made it much worse at understanding (facts 17/24 vs 23/24, memory 3/9 vs 8/9).
-- Discord gets the buzzed text; `msg_nodes` keeps the plain reply, and `bee.debuzz()` strips buzzing from history rebuilt from Discord.
-- Separate Russian and English prompts and few-shot examples (as chat turns, not in the system prompt), picked by the newest user
-  message with words in it. Mixed examples make her put English into Russian replies.
-- Keyword tone hints (insult / threat / kind) are added as a system message before the newest user message: MiniCPM misses Russian
-  insults on its own. Appended to the user's text instead, she reads the hint out loud.
-- `system_prompt` and `response_prefill` are skipped for `bee_models` (they're BeeLLM settings).
-- No "~~" in buzz words (Discord strikethrough). Don't add names to the examples (they leak into replies).
-- The eval scripts and results are in the Computers repo, `bee-eval/`.
-
 ## DeepSeek mode (the default since 2026-11-11)
+
+MiniCPM5-2B on this machine's GPU was a second, local model with its own two-stage style (plain reply, buzzing added by
+code) from 2026-11-11 until it was removed on 2026-11-12. Why that style existed and how the prompts were picked: `bee-eval/`
+in the Computers repo. The MiniCPM server itself (`~/minicpm5`) still runs, for CLIProxyAPI.
 
 - Model `cliproxy/mistral/deepseek-v4-1-flash-1017`: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI on node-mbp
   (`http://10.10.0.50:8317/v1`, key `CLIPROXY_API_KEY` in `.env`). ~0.5 s per reply; messages leave the LAN (to Mistral).
-- `one-stage`: the model buzzes itself from buzzing examples (separate RU/EN prompts). No tone hints, no `buzzify()`, history
-  keeps her buzzing. Tested: facts 24/24, memory 9/9, understands slang and insults that MiniCPM misses.
+- The model buzzes itself from buzzing examples (separate RU/EN prompts, as chat turns, not in the system prompt). Tested:
+  facts 24/24, memory 9/9, understands slang and insults.
+- `system_prompt` and `response_prefill` are skipped for `bee_models` (they're BeeLLM settings).
 - Persona (2026-11-11): a teasing old buddy (from the owner's "охреневший кореш" prompt, toned down: hard and swearing only
   when someone is rude to her) who still buzzes in every phrase and panics at slippers/jars/nets.
 - Names: llmcord passes the author's display name with each user message (`MsgNode.author_name`) and turns @mentions into
   `@Name` for `bee_models`; `bee.prepare()` writes user turns as "Name: text". How often she uses names comes from the
   examples (named examples, the name in about a third of her replies), not from the prompt.
-- Speaker hint (one-stage): a system note before the newest message, "now {name} is writing; don't take others' rudeness out
+- Speaker hint: a system note before the newest message, "now {name} is writing; don't take others' rudeness out
   on them; if they're not rude, be friendly". Without it one person's insults spilled over to everyone in the reply chain
   (seen live 2026-11-11). It's conditional on purpose: a keyword-based "they're not rude" made her sweet to insults the
   keywords miss. Judged by Claude Sonnet in bee-eval round 9: snark at neutral messages 15/72 -> 0/72.
@@ -57,8 +45,9 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
   line to use whole chains again. `msg_nodes` is in memory only, so a restart clears that part anyway.
 - Testing without Discord: `fake_discord.py` in the Computers repo (`bee-eval/`) runs the real `on_message` on fake messages.
 - Mistral answers 422 on unknown fields: no `dry_multiplier`, `min_p` or `chat_template_kwargs` in its model params.
-- If node-mbp's proxy or Mistral is down she doesn't answer (no automatic fallback). Then put `minicpm/minicpm5-2b`
-  first in `models:` and restart: `/model` only works for `admin_ids`, which is empty, and the first model is read at startup.
+- If node-mbp's proxy or Mistral is down she doesn't answer (no fallback). The only other model is BeeLLM
+  (`bee/scintilla`): put it first in `models:` and restart (`/model` only works for `admin_ids`, which is empty, and the
+  first model is read at startup).
 
 ## Model quirks (BeeLLM)
 
