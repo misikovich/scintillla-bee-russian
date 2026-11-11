@@ -7,7 +7,8 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 ## Layout
 
 - `llmcord.py`: the whole bot (upstream code plus small patches; keep the diff small so upstream merges stay easy)
-- `bee.py`: Scintilla on MiniCPM5-2B (prompt, examples, tone hints, `buzzify()`); used for models listed in `bee_models`
+- `bee.py`: Scintilla on a real model (prompts, examples, tone hints, `buzzify()`); used for models in `bee_models`, each
+  with a style: `two-stage` (MiniCPM) or `one-stage` (DeepSeek)
 - `translate.py`: Russian <-> English translation via a second llama-server (Gemma 3 4B, CUDA, :8082); kept out of `llmcord.py`
 - `config.yaml`: bee settings, hot-reloaded on every message
 - `docker-compose.yaml`: `llama` (llama.cpp server on :8081) + `translator` (llama.cpp CUDA on :8082, needs an NVIDIA GPU)
@@ -34,6 +35,15 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - `system_prompt` and `response_prefill` are skipped for `bee_models` (they're BeeLLM settings).
 - No "~~" in buzz words (Discord strikethrough). Don't add names to the examples (they leak into replies).
 - The eval scripts and results are in the Computers repo, `bee-eval/`.
+
+## DeepSeek mode (added 2026-11-11, not the default yet)
+
+- Model `cliproxy/mistral/deepseek-v4-1-flash-1017`: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI on node-mbp
+  (`http://10.10.0.50:8317/v1`, key `CLIPROXY_API_KEY` in `.env`). ~0.5 s per reply; messages leave the LAN (to Mistral).
+- `one-stage`: the model buzzes itself from buzzing examples (separate RU/EN prompts). No tone hints, no `buzzify()`, history
+  keeps her buzzing. Tested: facts 24/24, memory 9/9, understands slang and insults that MiniCPM misses.
+- Mistral answers 422 on unknown fields: no `dry_multiplier`, `min_p` or `chat_template_kwargs` in its model params.
+- `/model` only works for `admin_ids` (empty), so to use it: put it first in `models:` and restart, or set `admin_ids`.
 
 ## Model quirks (BeeLLM)
 

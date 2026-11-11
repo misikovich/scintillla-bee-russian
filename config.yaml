@@ -52,6 +52,11 @@ providers:
     base_url: http://10.10.0.41:8083/v1
     api_key_env: MINICPM_API_KEY
 
+  # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); DeepSeek through Mistral's API
+  cliproxy:
+    base_url: http://10.10.0.50:8317/v1
+    api_key_env: CLIPROXY_API_KEY
+
   # llama-server running BeeLLM-2.0-12M-Mood.gguf (see docker-compose.yaml)
   bee:
     base_url: http://localhost:8081/v1
@@ -69,14 +74,21 @@ models:
     chat_template_kwargs:
       enable_thinking: false
 
+  # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI: ~0.5 s, much better Russian than MiniCPM, buzzes on its
+  # own (one-stage). Mistral rejects llama.cpp-only fields (dry_multiplier, min_p, chat_template_kwargs): don't add them
+  cliproxy/mistral/deepseek-v4-1-flash-1017:
+    temperature: 0.7
+    max_tokens: 150
+
   # Don't put "llama" in this name: llmcord would treat it as a vision model
   bee/scintilla:
     max_tokens: 200
 
-# Models that get Scintilla's MiniCPM prompt, examples and buzzing (bee.py); system_prompt and response_prefill are
-# skipped for them
+# Models that get Scintilla's prompt and examples (bee.py), with their style: two-stage (plain reply, buzzing added by
+# code; for small models) or one-stage (the model buzzes itself). system_prompt and response_prefill are skipped for them
 bee_models:
-  - minicpm/minicpm5-2b
+  minicpm/minicpm5-2b: two-stage
+  cliproxy/mistral/deepseek-v4-1-flash-1017: one-stage
 
 # Leave empty: BeeLLM's chat template drops system messages anyway
 system_prompt:

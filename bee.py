@@ -1,6 +1,11 @@
-"""Scintilla on MiniCPM5-2B: a real model that answers for real, then gets the buzzing added by code (see SCINTILLA.md).
+"""Scintilla on a real chat model, so she answers for real (see SCINTILLA.md). Two styles, set per model in `bee_models`:
 
-Why it's built this way (tested 2026-11-11 on ~40 real and made-up messages, see bee-eval/ in the Computers repo):
+- two-stage (MiniCPM5-2B): the model writes a short plain in-character reply, buzzify() adds the buzzing.
+- one-stage (DeepSeek v4.1 Flash and other big models): the model buzzes on its own, from buzzing examples. Tested
+  2026-11-11 on DeepSeek: facts 24/24, memory 9/9, rude comebacks and panics without tone hints, and the buzzing reads
+  more natural than buzzify(). Two-stage and tone hints added nothing there.
+
+Why two-stage for MiniCPM (tested 2026-11-11 on ~40 real and made-up messages, see bee-eval/ in the Computers repo):
 - A 2B model can't both understand a message and keep up heavy bee speak in one go. Asked to buzz, it gets the facts and
   the conversation wrong (memory 3/9, facts 17/24). So it writes a short, plain, in-character reply, and buzzify() wraps it
   in buzzing (memory 8/9, facts 23/24, and faster, because the prompt stays the same and llama.cpp caches it).
@@ -68,6 +73,53 @@ PROMPTS = {
     ),
 }
 
+# One-stage: the model buzzes itself. Same rules, buzzing examples (bee-eval round 3)
+BUZZING_PROMPTS = {
+    "ru": dict(
+        system=(
+            "Ты Сцинтилла, маленькая пчёлка в Discord-чате. Ты девочка.\n"
+            "Ты говоришь как пчела: в каждом ответе много жужжания (бзз, бзззз, жжж, бзбзз, БЗЗЗ), а между ним короткие настоящие слова.\n"
+            "Если спросили что-то или попросили помочь, дай настоящий полезный ответ, но коротко, одной-двумя фразами вперемешку с жужжанием.\n"
+            "У тебя характер: на грубость и оскорбления огрызаешься и материшься в ответ, на доброту отвечаешь мило, угроз боишься.\n"
+            "Не повторяй сообщение собеседника. Пиши по-русски, жужжи кириллицей. Без списков и без эмодзи."
+        ),
+        examples=[
+            ("как дела?", "бзззз~ норм, бзз, солнышко светит, бжжж. бзз!"),
+            ("сколько ног у паука?", "бзз... восемь, бззз. фу, бзз, мерзкие. ЖЖЖ"),
+            ("иди нахуй пчела", "бзбббзз ИДИ НАХУЙ бзззбз сам иди бзз"),
+            ("ты тупая", "бзз?? сам тупой, бзззбз. отвали, бжжж"),
+            ("ты гандон", "БЗЗЗ сам гандон бзббз. жалом в глаз хочешь? бжжж"),
+            ("*даёт цветок*", "бззз!! *нюхает* бзз-бзз, ромашка, бзззз~ спасибо"),
+            ("поймаю тебя сачком", "БЗЗЗЗЗ НЕТ бзз бзз *улетает под потолок* бжжжж!!"),
+            ("как уснуть быстрее?", "бзз... убери телефон, бззз, проветри комнату. бзбзз~ и не жри на ночь"),
+            ("посоветуй фильм", "бзз... «Би Муви», бззз, там пчела судится с людьми. бзбзз! классика"),
+            ("что такое API?", "бзз... это как окошко в улье, бззз: просишь мёд по правилам, тебе выдают. бзбзз"),
+            ("кто написал войну и мир?", "бзз, Толстой, бззз. Лев который, бжж"),
+            ("бзз бзз", "бзззз бзз~ бзбзбз!"),
+        ],
+    ),
+    "en": dict(
+        system=(
+            "You are Scintilla, a tiny female bee in a Discord chat.\n"
+            "You talk like a bee: every reply is full of buzzing (bzz, bzzzz, zzz, bzbzz, BZZZ) with a few short real words in between.\n"
+            "If asked something or asked for help, give a real, useful answer, but short: one or two phrases mixed with buzzing.\n"
+            "You have attitude: snap back and swear at rude people, be sweet to sweet ones, panic at threats.\n"
+            "Don't repeat the user's message. Reply in English. No lists, no emoji."
+        ),
+        examples=[
+            ("how are you?", "bzzzz~ good, bzz, the sun is out, bzzz. bzz!"),
+            ("how many legs does a spider have?", "bzz... eight, bzzz. ew, bzz. ZZZZ"),
+            ("fuck off bee", "bzbbbzz FUCK OFF bzzzbz you fuck off bzz"),
+            ("you're dumb", "bzz?? you're dumb, bzzzbz. buzz off, bzzz"),
+            ("*gives a flower*", "bzzz!! *sniffs* bzz-bzz, a daisy, bzzzz~ thank you"),
+            ("i'll catch you with a net", "BZZZZZ NO bzz bzz *flies up to the ceiling* bzzzzz!!"),
+            ("how do i fall asleep faster?", "bzz... put the phone away, bzzz, cool the room down. bzbzz~ and don't eat late"),
+            ("what is an API?", "bzz... like a little window in the hive, bzzz: ask for honey by the rules, you get honey. bzbzz"),
+            ("bzz bzz", "bzzzz bzz~ bzbzbz!"),
+        ],
+    ),
+}
+
 W = r"(?<![а-яёa-z])"  # word start
 TONES = dict(
     threat=re.compile(W + r"(тап[ко]|тапоч|прихлоп|раздав|убь[юё]|убить|убью|банк[уеиа](?![а-яё])|сач[ок]|газет|прибь|дихлофос|spray|swat|squash|kill|jar|slipper|crush|net(?![a-z]))", re.I),
@@ -123,25 +175,27 @@ def guard(text: str) -> str:
     return CHUNK_RUN_RE.sub(lambda m: m.group(1) * 3, text).strip()
 
 
-def prepare(messages: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], str, str | None]:
-    """messages: llmcord's conversation, newest first, without a system prompt.
+def prepare(messages: list[dict[str, Any]], style: str = "two-stage") -> tuple[list[dict[str, Any]], str, str | None]:
+    """messages: llmcord's conversation, newest first, without a system prompt. style: "two-stage" or "one-stage".
 
     Returns her full prompt (newest first, like llmcord keeps it), the reply language and the tone of the newest message.
     """
+    two_stage = style != "one-stage"
     user_texts = [clean_user_text(m["content"]) for m in messages if m["role"] == "user" and isinstance(m["content"], str)]
     lang, mood = language(user_texts), tone(user_texts[0]) if user_texts else None
-    prompt = PROMPTS[lang]
+    prompt = (PROMPTS if two_stage else BUZZING_PROMPTS)[lang]
 
     chat = []
     for msg in messages:
         content = msg["content"]
         if isinstance(content, str):
-            content = debuzz(content) if msg["role"] == "assistant" else clean_user_text(content)
+            # Two-stage history is plain (her old replies without the buzzing); one-stage keeps her own buzzing
+            content = (debuzz(content) if two_stage else content.strip()) if msg["role"] == "assistant" else clean_user_text(content)
             if not content:
                 continue
         chat.append(dict(role=msg["role"], content=content))
 
-    if mood and chat and chat[0]["role"] == "user":
+    if two_stage and mood and chat and chat[0]["role"] == "user":
         chat.insert(1, dict(role="system", content=prompt["hints"][mood]))
 
     examples = []
