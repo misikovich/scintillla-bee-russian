@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import logging
 import os
+import re
 from typing import Any, Literal, Optional
 
 import discord
@@ -33,6 +34,13 @@ STREAMING_INDICATOR = " ⚪"
 EDIT_DELAY_SECONDS = 1
 
 MAX_MESSAGE_NODES = 500
+
+# She also answers when called by name, without an @mention: "пчол..." (пчола, пчолка) or "bee"/"beee"/"bees" (not "been", "beer")
+NAME_TRIGGER = re.compile(r"\bпчол|\bbee+s?\b", re.IGNORECASE)
+
+
+def is_called(msg: discord.Message) -> bool:
+    return discord_bot.user in msg.mentions or bool(NAME_TRIGGER.search(msg.content))
 
 
 def resolve_env(node: Any) -> Any:
@@ -125,7 +133,7 @@ async def on_message(new_msg: discord.Message) -> None:
 
     is_dm = new_msg.channel.type == discord.ChannelType.private
 
-    if new_msg.author == discord_bot.user or (not is_dm and discord_bot.user not in new_msg.mentions):
+    if new_msg.author == discord_bot.user or (not is_dm and not is_called(new_msg)):
         return
 
     # Other bots must @mention us in the message text (a reply ping isn't enough), so two bots don't reply to each other forever
@@ -255,7 +263,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 try:
                     if (
                         curr_msg.reference == None
-                        and discord_bot.user.mention not in curr_msg.content
+                        and not is_called(curr_msg)
                         and (prev_msg_in_channel := ([m async for m in curr_msg.channel.history(before=curr_msg, limit=1)] or [None])[0])
                         and prev_msg_in_channel.type in (discord.MessageType.default, discord.MessageType.reply)
                         and prev_msg_in_channel.author == (discord_bot.user if curr_msg.channel.type == discord.ChannelType.private else curr_msg.author)
