@@ -14,7 +14,7 @@ use_plain_responses: true
 
 # History reset: messages from before this time (ISO, UTC if no offset) are left out of every conversation, so she
 # doesn't see her old replies. Delete the line to use the whole reply chain again
-history_since: "2026-11-11T21:51:29+00:00"
+history_since: "2026-11-11T22:41:50+00:00"
 
 # Seconds from her getting a message to her reply at the least, so she doesn't answer instantly; she shows "typing..."
 # meanwhile. Slower replies aren't held up further. Plain responses only. 0 turns it off
