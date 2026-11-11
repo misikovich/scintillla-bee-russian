@@ -48,6 +48,11 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - Names: llmcord passes the author's display name with each user message (`MsgNode.author_name`) and turns @mentions into
   `@Name` for `bee_models`; `bee.prepare()` writes user turns as "Name: text". How often she uses names comes from the
   examples (named examples, the name in about a third of her replies), not from the prompt.
+- Speaker hint (one-stage): a system note before the newest message, "now {name} is writing; don't take others' rudeness out
+  on them; if they're not rude, be friendly". Without it one person's insults spilled over to everyone in the reply chain
+  (seen live 2026-11-11). It's conditional on purpose: a keyword-based "they're not rude" made her sweet to insults the
+  keywords miss. Judged by Claude Sonnet in bee-eval round 9: snark at neutral messages 15/72 -> 0/72.
+- Image/sticker-only messages reach her as "(прислали картинку, ты её не видишь)"; empty, she answered "<".
 - `history_since` in `config.yaml` (ISO time): older messages are left out of every reply chain. A history reset; delete the
   line to use whole chains again. `msg_nodes` is in memory only, so a restart clears that part anyway.
 - Testing without Discord: `fake_discord.py` in the Computers repo (`bee-eval/`) runs the real `on_message` on fake messages.

@@ -218,6 +218,12 @@ async def on_message(new_msg: discord.Message) -> None:
                         name = "" if user == discord_bot.user else f"@{user.display_name}"
                         cleaned_content = cleaned_content.replace(f"<@{user.id}>", name).replace(f"<@!{user.id}>", name)
 
+                    # She can't see images or stickers: say one was sent, instead of an empty message (she answered "<" to one)
+                    if not cleaned_content:
+                        media = [f"(прислали стикер «{sticker.name}», ты его не видишь)" for sticker in curr_msg.stickers]
+                        media += ["(прислали картинку, ты её не видишь)" if (att.content_type or "").startswith("image") else "(прислали файл)" for att in curr_msg.attachments]
+                        cleaned_content = " ".join(media)
+
                 good_attachments = [att for att in curr_msg.attachments if att.content_type and any(att.content_type.startswith(x) for x in ("text", "image"))]
 
                 attachment_responses = await asyncio.gather(*[httpx_client.get(att.url) for att in good_attachments])

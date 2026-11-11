@@ -123,6 +123,14 @@ BUZZING_PROMPTS = {
     ),
 }
 
+# One-stage: a system note right before the newest message, so one person's insults don't spill over to the next person
+# (a real chat on 2026-11-11: after Maron's insults she snapped at everyone in the reply chain, "йоу" -> "чё хотел-то?").
+# Conditional on purpose: a keyword-based "they're not rude" made her sweet to insults the keywords miss (bee-eval round 9)
+SPEAKER_HINTS = {
+    "ru": "Сейчас пишет {name}. Отвечай {name} на его сообщение. Чужие наезды на {name} не переноси: если {name} не хамит тебе, будь с {name} дружелюбной.",
+    "en": "Now {name} is writing. Answer {name}'s message. Don't take anyone else's rudeness out on {name}: if {name} isn't rude to you, be friendly to {name}.",
+}
+
 W = r"(?<![а-яёa-z])"  # word start
 TONES = dict(
     threat=re.compile(W + r"(тап[ко]|тапоч|прихлоп|раздав|убь[юё]|убить|убью|банк[уеиа](?![а-яё])|сач[ок]|газет|прибь|дихлофос|spray|swat|squash|kill|jar|slipper|crush|net(?![a-z]))", re.I),
@@ -184,10 +192,12 @@ def guard(text: str) -> str:
     return CHUNK_RUN_RE.sub(lambda m: m.group(1) * 3, text).strip()
 
 
-def prepare(messages: list[dict[str, Any]], style: str = "two-stage", prompts: dict | None = None) -> tuple[list[dict[str, Any]], str, str | None]:
+def prepare(
+    messages: list[dict[str, Any]], style: str = "two-stage", prompts: dict | None = None, speaker_hint: bool = True
+) -> tuple[list[dict[str, Any]], str, str | None]:
     """messages: llmcord's conversation, newest first, without a system prompt. style: "two-stage" or "one-stage".
     A user message may have a "name" (the author's display name): it goes in front of the text as "Name: text", so she
-    can tell people apart. prompts overrides PROMPTS / BUZZING_PROMPTS (for testing).
+    can tell people apart. prompts overrides PROMPTS / BUZZING_PROMPTS, speaker_hint=False drops SPEAKER_HINTS (for testing).
 
     Returns her full prompt (newest first, like llmcord keeps it), the reply language and the tone of the newest message.
     """
@@ -210,6 +220,8 @@ def prepare(messages: list[dict[str, Any]], style: str = "two-stage", prompts: d
 
     if two_stage and mood and chat and chat[0]["role"] == "user":
         chat.insert(1, dict(role="system", content=prompt["hints"][mood]))
+    elif speaker_hint and not two_stage and chat and chat[0]["role"] == "user" and (name := messages[0].get("name")):
+        chat.insert(1, dict(role="system", content=SPEAKER_HINTS[lang].format(name=name)))
 
     examples = []
     for user, reply in prompt["examples"]:
