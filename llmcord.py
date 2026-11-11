@@ -1,7 +1,7 @@
 import asyncio
 from base64 import b64encode
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import os
 from typing import Any, Literal, Optional
@@ -72,6 +72,9 @@ class MsgNode:
     fetch_parent_failed: bool = False
 
     parent_msg: Optional[discord.Message] = None
+
+    # Display name of the author, so bee models can tell people apart (see bee.py)
+    author_name: Optional[str] = None
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -168,6 +171,15 @@ async def on_message(new_msg: discord.Message) -> None:
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
 
+    # Scintilla's models (bee.py): their prompt, examples and buzzing style
+    bee_style = (config.get("bee_models") or {}).get(provider_slash_model)
+
+    # Messages older than this are left out of conversations (a history reset; her in-memory cache only lasts until a
+    # restart, the reply chains in Discord stay)
+    if history_since := config.get("history_since"):
+        history_since = datetime.fromisoformat(str(history_since))
+        history_since = history_since if history_since.tzinfo else history_since.replace(tzinfo=timezone.utc)
+
     provider_config = config["providers"][provider]
 
     base_url = provider_config["base_url"]
@@ -191,12 +203,20 @@ async def on_message(new_msg: discord.Message) -> None:
     user_warnings = set()
     curr_msg = new_msg
 
-    while curr_msg != None and len(messages) < max_messages:
+    while curr_msg != None and len(messages) < max_messages and not (history_since and curr_msg.created_at < history_since):
         curr_node = msg_nodes.setdefault(curr_msg.id, MsgNode())
 
         async with curr_node.lock:
             if curr_node.text == None:
                 cleaned_content = curr_msg.content.removeprefix(discord_bot.user.mention).lstrip()
+
+                curr_node.author_name = curr_msg.author.display_name
+
+                # Bee models read names, not IDs: "<@123>" -> "@Name" (her own mention is dropped)
+                if bee_style:
+                    for user in curr_msg.mentions:
+                        name = "" if user == discord_bot.user else f"@{user.display_name}"
+                        cleaned_content = cleaned_content.replace(f"<@{user.id}>", name).replace(f"<@!{user.id}>", name)
 
                 good_attachments = [att for att in curr_msg.attachments if att.content_type and any(att.content_type.startswith(x) for x in ("text", "image"))]
 
@@ -255,7 +275,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 content = curr_node.text[:max_text]
 
             if content != "":
-                messages.append(dict(content=content, role=curr_node.role))
+                messages.append(dict(content=content, role=curr_node.role) | (dict(name=curr_node.author_name) if bee_style and curr_node.role == "user" else {}))
 
             if len(curr_node.text) > max_text:
                 user_warnings.add(f"⚠️ Max {max_text:,} characters per message")
@@ -271,7 +291,7 @@ async def on_message(new_msg: discord.Message) -> None:
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
     # Scintilla on a real model: her own prompt and examples; two-stage models get the buzzing added afterwards (see bee.py)
-    if bee_style := (config.get("bee_models") or {}).get(provider_slash_model):
+    if bee_style:
         messages, bee_lang, bee_tone = bee.prepare(messages, bee_style)
 
     if (system_prompt := config.get("system_prompt")) and not bee_style:
