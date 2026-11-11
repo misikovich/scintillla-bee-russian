@@ -42,6 +42,9 @@ MiniCPM5-2B, where the model writes a plain reply and code adds the buzzing. Bot
 
 ## Changes from upstream
 
+- `min_reply_delay` (3 s since 2026-11-11): she waits at least that long after a message, showing "typing...", so
+  replies don't look instant. Slower replies aren't held up further.
+
 - `prefix_user_ids: false` stops prefixing user messages with `<@ID>: `. BeeLLM was trained on
   plain text and answers prefixed messages with `[angry:low] BZzZzZZZ` every time.
 - `allow_bots: true` lets other bots talk to her, but only when they @mention her in the message

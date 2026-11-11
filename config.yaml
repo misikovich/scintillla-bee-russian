@@ -11,6 +11,10 @@ max_images: 0
 max_messages: 8
 
 use_plain_responses: true
+
+# Seconds from her getting a message to her reply at the least, so she doesn't answer instantly; she shows "typing..."
+# meanwhile. Slower replies aren't held up further. Plain responses only. 0 turns it off
+min_reply_delay: 3
 allow_dms: true
 
 # BeeLLM was trained on plain text; "<@ID>: " prefixes make her angry

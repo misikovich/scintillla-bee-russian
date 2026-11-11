@@ -118,6 +118,8 @@ async def on_ready() -> None:
 async def on_message(new_msg: discord.Message) -> None:
     global last_task_time
 
+    received_at = asyncio.get_running_loop().time()
+
     is_dm = new_msg.channel.type == discord.ChannelType.private
 
     if new_msg.author == discord_bot.user or (not is_dm and discord_bot.user not in new_msg.mentions):
@@ -362,6 +364,10 @@ async def on_message(new_msg: discord.Message) -> None:
                 if bee_style and (model_text := bee.guard("".join(response_contents))):
                     buzzed = bee.buzzify(model_text, bee_lang, bee_tone) if bee_style == "two-stage" else model_text
                     response_contents = [buzzed[i : i + max_message_length] for i in range(0, len(buzzed), max_message_length)]
+
+                # Don't answer instantly: wait until min_reply_delay seconds after the message came in ("typing..." shows meanwhile)
+                if (wait := config.get("min_reply_delay", 0) - (asyncio.get_running_loop().time() - received_at)) > 0:
+                    await asyncio.sleep(wait)
 
                 for content in response_contents:
                     await reply_helper(content=content, suppress_embeds=True)
