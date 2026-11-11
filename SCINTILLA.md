@@ -35,9 +35,10 @@ Talk to her by @mentioning her; reply to her messages to continue a conversation
 
 ## MiniCPM mode
 
-Since 2026-11-11 she runs on MiniCPM5-2B (`bee_models` in `config.yaml`, code in `bee.py`): the model writes a short, real
-answer in character and code adds the buzzing, so she can say "бзббзз сам иди нахуй, бзззбз жалом в глаз хочешь? бжжж" or
-"бзз... Париж, бззз". Switch back to BeeLLM with `/model bee/scintilla` (or by putting it first in `models:` and restarting).
+Since 2026-11-11 she runs on DeepSeek v4.1 Flash (Mistral's API through CLIProxyAPI), which buzzes on its own and answers
+for real: "бззбз сам заткнись, бззз. жужжу как хочу, бжжж", "бзз, Париж, бззз. там мёд вкусный". The local fallback is
+MiniCPM5-2B, where the model writes a plain reply and code adds the buzzing. Both are in `bee_models` in `config.yaml`, code in
+`bee.py`. To switch (also back to BeeLLM, `bee/scintilla`): put the model first in `models:` and restart.
 
 ## Changes from upstream
 

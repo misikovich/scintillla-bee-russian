@@ -62,7 +62,15 @@ providers:
     base_url: http://localhost:8081/v1
 
 models:
-  # The first model is the default; /model switches (admins only once admin_ids is set)
+  # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
+  # Default since 2026-11-11: DeepSeek. If node-mbp's proxy or Mistral is down she doesn't answer; move MiniCPM up then
+  # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI: ~0.5 s, much better Russian than MiniCPM, buzzes on its
+  # own (one-stage). Mistral rejects llama.cpp-only fields (dry_multiplier, min_p, chat_template_kwargs): don't add them
+  cliproxy/mistral/deepseek-v4-1-flash-1017:
+    temperature: 0.7
+    max_tokens: 150
+
+  # MiniCPM5-2B on this machine's GPU (local, fallback)
   # Sampling tested in bee-eval (Computers repo): thinking off (8 s and still wrong), temp 0.7, DRY stops her repeating
   # the user's message back, 100 tokens is plenty for one or two phrases
   minicpm/minicpm5-2b:
@@ -73,12 +81,6 @@ models:
     max_tokens: 100
     chat_template_kwargs:
       enable_thinking: false
-
-  # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI: ~0.5 s, much better Russian than MiniCPM, buzzes on its
-  # own (one-stage). Mistral rejects llama.cpp-only fields (dry_multiplier, min_p, chat_template_kwargs): don't add them
-  cliproxy/mistral/deepseek-v4-1-flash-1017:
-    temperature: 0.7
-    max_tokens: 150
 
   # Don't put "llama" in this name: llmcord would treat it as a vision model
   bee/scintilla:

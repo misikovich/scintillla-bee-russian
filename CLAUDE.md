@@ -1,7 +1,8 @@
 # bee-bot
 
 Discord bot "scintilla bee": a fork of [llmcord](https://github.com/jakobdylanc/llmcord) (git remote `upstream`).
-Since 2026-11-11 she runs on MiniCPM5-2B (`bee.py`, see below); before that, and still selectable with `/model`, she chatted using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
+Since 2026-11-11 she runs on DeepSeek v4.1 Flash via CLIProxyAPI, with MiniCPM5-2B as the local fallback (`bee.py`, see
+below); before that she chatted using [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM), a 12M-param toy model
 that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILLA.md` for setup.
 
 ## Layout
@@ -21,7 +22,7 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - Local: `llama-server -hf schizophyllume/BeeLLM -hff BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --port 8081`
   and `.venv/bin/python llmcord.py`
 
-## MiniCPM mode (default since 2026-11-11)
+## MiniCPM mode (default for a few hours on 2026-11-11, now the local fallback)
 
 - Model `minicpm/minicpm5-2b`: llama.cpp CUDA on this machine (`~/minicpm5`, `http://10.10.0.41:8083/v1`, key `MINICPM_API_KEY` in `.env`).
   The bot reaches it on the host LAN IP. Thinking is off (`chat_template_kwargs`), temp 0.7, `dry_multiplier: 0.8`, 100 tokens.
@@ -36,14 +37,15 @@ that only buzzes and starts every reply with a `[mood:level]` tag. See `SCINTILL
 - No "~~" in buzz words (Discord strikethrough). Don't add names to the examples (they leak into replies).
 - The eval scripts and results are in the Computers repo, `bee-eval/`.
 
-## DeepSeek mode (added 2026-11-11, not the default yet)
+## DeepSeek mode (the default since 2026-11-11)
 
 - Model `cliproxy/mistral/deepseek-v4-1-flash-1017`: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI on node-mbp
   (`http://10.10.0.50:8317/v1`, key `CLIPROXY_API_KEY` in `.env`). ~0.5 s per reply; messages leave the LAN (to Mistral).
 - `one-stage`: the model buzzes itself from buzzing examples (separate RU/EN prompts). No tone hints, no `buzzify()`, history
   keeps her buzzing. Tested: facts 24/24, memory 9/9, understands slang and insults that MiniCPM misses.
 - Mistral answers 422 on unknown fields: no `dry_multiplier`, `min_p` or `chat_template_kwargs` in its model params.
-- `/model` only works for `admin_ids` (empty), so to use it: put it first in `models:` and restart, or set `admin_ids`.
+- If node-mbp's proxy or Mistral is down she doesn't answer (no automatic fallback). Then put `minicpm/minicpm5-2b`
+  first in `models:` and restart: `/model` only works for `admin_ids`, which is empty, and the first model is read at startup.
 
 ## Model quirks (BeeLLM)
 
