@@ -1,7 +1,8 @@
 services:
   llama:
     image: ghcr.io/ggml-org/llama.cpp:server
-    command: -hf schizophyllume/BeeLLM -hff BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --host 0.0.0.0 --port 8081
+    # Local copy of the cached file: upstream moved it to mood/ (2026-11), and -hf re-checks the repo on every start
+    command: -m /models/models--schizophyllume--BeeLLM/snapshots/f469ed610f716ae438c04c2bd04921fed7eabd55/BeeLLM-2.0-12M-Mood.gguf -c 4096 --jinja --host 0.0.0.0 --port 8081
     restart: unless-stopped
     environment:
       LLAMA_CACHE: /models
