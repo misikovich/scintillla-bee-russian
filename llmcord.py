@@ -16,7 +16,6 @@ from openai import AsyncOpenAI
 import yaml
 
 import bee
-from translate import has_russian, translate
 
 load_dotenv()
 
@@ -251,10 +250,6 @@ async def on_message(new_msg: discord.Message) -> None:
                     if att.content_type.startswith("image")
                 ]
 
-                # BeeLLM only understands English (see translate.py)
-                if (translator_config := config.get("translator")) and has_russian(curr_node.text):
-                    curr_node.text = await translate(curr_node.text, "en", translator_config)
-
                 if curr_node.role == "user" and (curr_node.text or curr_node.images) and config.get("prefix_user_ids", True):
                     curr_node.text = f"<@{curr_msg.author.id}>: {curr_node.text}"
 
@@ -314,12 +309,8 @@ async def on_message(new_msg: discord.Message) -> None:
 
         messages.append(dict(role="system", content=system_prompt))
 
-    # Start the reply with this text; the server continues it but doesn't stream it back, so it's re-added below
-    if (response_prefill := config.get("response_prefill")) and not bee_mode:
-        messages.insert(0, dict(role="assistant", content=response_prefill))
-
     # Generate and send response message(s) (can be multiple if response is long)
-    curr_content = (response_prefill if not bee_mode else None) or None
+    curr_content = None
     finish_reason = None
     model_text = None
     response_msgs = []
@@ -387,12 +378,6 @@ async def on_message(new_msg: discord.Message) -> None:
                         last_task_time = datetime.now().timestamp()
 
             if use_plain_responses:
-                # Answer Russian messages in Russian, but keep her English reply in msg_nodes for the conversation history
-                if (translator_config := config.get("translator")) and has_russian(new_msg.content) and response_contents:
-                    model_text = "".join(response_contents)
-                    translation = await translate(model_text, "ru", translator_config)
-                    response_contents = [translation[i : i + max_message_length] for i in range(0, len(translation), max_message_length)]
-
                 # Loop guard and no "Сцинтилла:" label (see bee.py)
                 if bee_mode and (model_text := bee.guard("".join(response_contents))):
                     response_contents = [model_text[i : i + max_message_length] for i in range(0, len(model_text), max_message_length)]

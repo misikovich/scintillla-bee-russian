@@ -5,7 +5,7 @@ client_id_env: DISCORD_CLIENT_ID
 
 status_message: bzz~
 
-# Scintilla has a 4096-token context and gets confused by long histories
+# Short histories keep her on topic
 max_text: 2000
 max_images: 0
 max_messages: 8
@@ -21,12 +21,8 @@ history_since: "2026-11-11T22:41:50+00:00"
 min_reply_delay: 3
 allow_dms: true
 
-# BeeLLM was trained on plain text; "<@ID>: " prefixes make her angry
+# bee.py writes user turns as "Name: text" itself; "<@ID>: " prefixes would only add noise
 prefix_user_ids: false
-
-# BeeLLM only (not bee_models): BeeLLM's replies all start with a "[mood:level]" tag. Some messages (e.g. "put u in jar") make her end the
-# reply before it starts, so nothing gets sent; starting the reply with "[" makes her always answer
-response_prefill: "["
 
 # Let other bots talk to her, but only when they @mention her in the message text
 allow_bots: true
@@ -46,23 +42,11 @@ permissions:
     allowed_ids: []
     blocked_ids: []
 
-# BeeLLM only understands English: Russian messages are translated to English for her, and her replies
-# to them back to Russian (needs use_plain_responses: true). Delete this block to turn translation off
-# Off since 2026-11-10 (the translator container is behind a compose profile now)
-# translator:
-#   # Gemma 3 4B on a llama.cpp CUDA server (see docker-compose.yaml)
-#   base_url: http://localhost:8082/v1
-#   model: gemma-3-4b
-
 providers:
   # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); DeepSeek through Mistral's API
   cliproxy:
     base_url: http://10.10.0.50:8317/v1
     api_key_env: CLIPROXY_API_KEY
-
-  # llama-server running BeeLLM-2.0-12M-Mood.gguf (see docker-compose.yaml)
-  bee:
-    base_url: http://localhost:8081/v1
 
 models:
   # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
@@ -72,13 +56,9 @@ models:
     temperature: 0.7
     max_tokens: 150
 
-  # Don't put "llama" in this name: llmcord would treat it as a vision model
-  bee/scintilla:
-    max_tokens: 200
-
-# Models that get Scintilla's prompt and examples (bee.py); system_prompt and response_prefill are skipped for them
+# Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:
   - cliproxy/mistral/deepseek-v4-1-flash-1017
 
-# Leave empty: BeeLLM's chat template drops system messages anyway
+# Unused: bee_models get their system prompt from bee.py
 system_prompt:
