@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 596" width="820" height="596" role="img" aria-labelledby="t d">
+  <title id="t">How Scintilla answers</title>
+  <desc id="d">The satellite model reads the current message, decides whether to search, searches Tavily, Exa or SearXNG, and summarizes the results into a search context that is injected into the chat model's prompt. The chat model reads system context, message history, search context and the current message, and its response is sent as a Discord reply and becomes history.</desc>
+  <style>
+    .bg { fill: #fdfcf9; }
+    .box { fill: #ffffff; stroke: #9a9488; stroke-width: 2; }
+    .frame { fill: none; stroke: #c9c3b6; stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .blue { fill: #eef3fd; stroke: #4f7fd8; stroke-width: 2; }
+    .red { fill: #fdf0f0; stroke: #d9605f; stroke-width: 2; }
+    .green { fill: #eef7ef; stroke: #3f9150; stroke-width: 2; }
+    .ink { fill: #23201b; }
+    .mute { fill: #7b7468; }
+    .tb { fill: #2f62c4; }
+    .tr { fill: #c14544; }
+    .tg { fill: #2f7d3f; }
+    .w { stroke: #8e877a; stroke-width: 2; fill: none; }
+    .wr { stroke: #d9605f; stroke-width: 2; fill: none; }
+    .wg { stroke: #3f9150; stroke-width: 2; fill: none; }
+    .wgd { stroke: #3f9150; stroke-width: 2; fill: none; stroke-dasharray: 5 5; }
+    .k { fill: #8e877a; } .kr { fill: #d9605f; } .kg { fill: #3f9150; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+    .h1 { font-size: 22px; font-weight: 700; }
+    .hd { font-size: 16px; font-weight: 700; }
+    .l { font-size: 15px; font-weight: 600; }
+    .s { font-size: 11.5px; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #121212; }
+      .box { fill: #121212; stroke: #d6d6d6; }
+      .frame { stroke: #4a4a4a; }
+      .blue { fill: #121a2a; stroke: #6c9be8; }
+      .red { fill: #2a1616; stroke: #f08a89; }
+      .green { fill: #13221a; stroke: #5aa865; }
+      .ink { fill: #ececec; }
+      .mute { fill: #a3a3a3; }
+      .tb { fill: #8fb4f2; }
+      .tr { fill: #f4a3a2; }
+      .tg { fill: #7cc487; }
+      .w { stroke: #d6d6d6; } .k { fill: #d6d6d6; }
+      .wr { stroke: #f08a89; } .kr { fill: #f08a89; }
+      .wg, .wgd { stroke: #5aa865; } .kg { fill: #5aa865; }
+    }
+  </style>
+  <defs>
+    <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="k" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="mr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kr" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="mg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kg" d="M0 0 L10 5 L0 10 z"/></marker>
+  </defs>
+
+  <rect class="bg" width="820" height="596" rx="16"/>
+  <text class="ink h1" x="32" y="46">How Scintilla answers</text>
+  <text class="mute s" x="32" y="68">Two models, both on an OpenAI-compatible API.</text>
+
+  <!-- chat model -->
+  <rect class="frame" x="440" y="92" width="340" height="268" rx="14"/>
+  <text class="ink hd" x="460" y="118">Chat model (Scintilla)</text>
+
+  <rect class="blue" x="460" y="132" width="300" height="46" rx="10"/>
+  <text class="tb l" x="610" y="152" text-anchor="middle">System context</text>
+  <text class="mute s" x="610" y="169" text-anchor="middle">persona + example dialogues</text>
+
+  <rect class="blue" x="460" y="188" width="300" height="46" rx="10"/>
+  <text class="tb l" x="610" y="216" text-anchor="middle">Message history</text>
+
+  <rect class="blue" x="460" y="244" width="300" height="46" rx="10"/>
+  <text class="tb l" x="610" y="272" text-anchor="middle">Search context</text>
+
+  <rect class="red" x="460" y="300" width="300" height="46" rx="10"/>
+  <text class="tr l" x="610" y="320" text-anchor="middle">Current turn message</text>
+  <text class="mute s" x="610" y="337" text-anchor="middle">+ a note on who's writing now</text>
+
+  <path class="wg" d="M610 362 V398" marker-end="url(#mg)"/>
+  <rect class="green" x="460" y="400" width="300" height="46" rx="10"/>
+  <text class="tg l" x="610" y="428" text-anchor="middle">Bee's response</text>
+
+  <path class="wg" d="M610 448 V510" marker-end="url(#mg)"/>
+  <rect class="box" x="460" y="512" width="300" height="56" rx="12"/>
+  <text class="ink l" x="610" y="545" text-anchor="middle">Discord reply</text>
+
+  <!-- both become history for the next turn -->
+  <path class="wgd" d="M762 423 H800 V211 H766" marker-end="url(#mg)"/>
+  <path class="wgd" d="M762 323 H800"/>
+  <text class="tg s" transform="translate(812 318) rotate(90)" text-anchor="middle">next turn: history</text>
+
+  <!-- satellite -->
+  <rect class="frame" x="40" y="282" width="300" height="236" rx="14"/>
+  <text class="ink hd" x="60" y="306">Satellite model</text>
+
+  <rect class="box" x="60" y="318" width="260" height="44" rx="10"/>
+  <text class="ink l" x="190" y="345" text-anchor="middle">Search decision</text>
+  <path class="w" d="M190 364 V384" marker-end="url(#m)"/>
+  <rect class="box" x="60" y="386" width="260" height="44" rx="10"/>
+  <text class="ink l" x="190" y="413" text-anchor="middle">Tavily / Exa / SearXNG search</text>
+  <path class="w" d="M190 432 V452" marker-end="url(#m)"/>
+  <rect class="box" x="60" y="454" width="260" height="44" rx="10"/>
+  <text class="ink l" x="190" y="481" text-anchor="middle">Summarize</text>
+
+
+  <!-- current message -> decision -->
+  <path class="wr" d="M458 331 H322" marker-end="url(#mr)"/>
+  <text class="tr s" x="390" y="324" text-anchor="middle">reads</text>
+
+  <!-- summarize -> inject -> search context -->
+  <path class="w" d="M60 476 H24 V267 H458" marker-end="url(#m)"/>
+  <text class="ink s" x="250" y="259" text-anchor="middle" font-weight="700">inject (a 1–2 fact note)</text>
+</svg>
