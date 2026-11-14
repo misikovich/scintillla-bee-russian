@@ -8,6 +8,6 @@ COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY llmcord.py bee.py config.yaml ./
+COPY llmcord.py bee.py satellite.py config.yaml ./
 
 CMD ["python", "llmcord.py"]

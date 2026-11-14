@@ -16,6 +16,7 @@ from openai import AsyncOpenAI
 import yaml
 
 import bee
+import satellite
 
 load_dotenv()
 
@@ -225,11 +226,15 @@ async def on_message(new_msg: discord.Message) -> None:
                         name = "" if user == discord_bot.user else f"@{user.display_name}"
                         cleaned_content = cleaned_content.replace(f"<@{user.id}>", name).replace(f"<@!{user.id}>", name)
 
-                    # She can't see images or stickers: say one was sent, instead of an empty message (she answered "<" to one)
+                    # What she can't see (stickers; images too unless the model takes them): say it was sent, instead of an
+                    # empty message (she answered "<" to one)
                     if not cleaned_content:
                         media = [f"(прислали стикер «{sticker.name}», ты его не видишь)" for sticker in curr_msg.stickers]
-                        media += ["(прислали картинку, ты её не видишь)" if (att.content_type or "").startswith("image") else "(прислали файл)" for att in curr_msg.attachments]
-                        cleaned_content = " ".join(media)
+                        media += [
+                            "(прислали файл)" if not (att.content_type or "").startswith("image") else "" if max_images else "(прислали картинку, ты её не видишь)"
+                            for att in curr_msg.attachments
+                        ]
+                        cleaned_content = " ".join(filter(None, media))
 
                 good_attachments = [att for att in curr_msg.attachments if att.content_type and any(att.content_type.startswith(x) for x in ("text", "image"))]
 
@@ -300,7 +305,12 @@ async def on_message(new_msg: discord.Message) -> None:
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
     if bee_mode:
-        messages, _ = bee.prepare(messages)
+        # Dynamic context (satellite.py): a second model may search the web first and give her a note for this reply
+        notes = []
+        if satellite_cfg := config.get("satellite"):
+            async with new_msg.channel.typing():
+                notes = await satellite.notes(messages, bee.reply_language(messages), satellite_cfg, config["providers"], httpx_client)
+        messages, _ = bee.prepare(messages, notes=notes)
 
     if (system_prompt := config.get("system_prompt")) and not bee_mode:
         now = datetime.now().astimezone()
@@ -345,7 +355,8 @@ async def on_message(new_msg: discord.Message) -> None:
                 finish_reason = choice.finish_reason
 
                 prev_content = curr_content or ""
-                curr_content = choice.delta.content or ""
+                # Text parts only: Mistral's reasoning models (GLM) stream "thinking" parts as lists
+                curr_content = satellite.text_of(choice.delta.content)
 
                 new_content = prev_content if finish_reason == None else (prev_content + curr_content)
 

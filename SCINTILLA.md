@@ -33,9 +33,18 @@ DeepSeek v4.1 Flash buzzes on its own and answers for real: "бззбз сам �
 "бзз, Париж, бззз. там мёд вкусный". It's in `bee_models` in `config.yaml`, code in `bee.py`. If node-mbp's proxy or
 Mistral is down she doesn't answer.
 
+## Satellite (web search)
+
+Before she answers, a second call to the same DeepSeek model (`satellite.py`, `satellite:` in `config.yaml`) decides
+whether the newest message needs fresh facts. If so, it searches Tavily or Exa (`TAVILY_API_KEY`/`EXA_API_KEY` in `.env`)
+or the self-hosted SearXNG (the `searxng` service in `docker-compose.yaml`) and turns the results into a one- or two-sentence note for her
+reply. "кто выиграл последний чм по футболу?" → "бззз Испания, Петь, бззз. аргентинцев в допах дожали, бжжж". The whole
+thing has a 5 s deadline; on a miss or error she answers without the note. Delete the `satellite:` block to turn it off.
+
 ## Changes from upstream
 
 - `bee_models` (`bee.py`): her prompt and examples, "Name: text" user turns, the speaker hint and the loop guard.
+- `satellite` (`satellite.py`): a web-search note for the reply when the newest message needs fresh facts.
 - `min_reply_delay` (3 s since 2026-11-11): she waits at least that long after a message, showing "typing...", so
   replies don't look instant. Slower replies aren't held up further.
 - `history_since`: messages older than this are left out of every reply chain (a history reset).

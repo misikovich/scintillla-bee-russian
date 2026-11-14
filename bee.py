@@ -12,6 +12,8 @@ MiniCPM5-2B (a two-stage style: plain reply, buzzing added by code) was removed 
 import re
 from typing import Any
 
+from satellite import text_of  # with images llmcord sends a message as a list of parts: one text part, then image_url parts
+
 CYRILLIC_RE = re.compile(r"[а-яё]", re.IGNORECASE)
 LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
 
@@ -110,30 +112,48 @@ def guard(text: str) -> str:
     return CHUNK_RUN_RE.sub(lambda m: m.group(1) * 3, text).strip()
 
 
-def prepare(messages: list[dict[str, Any]], prompts: dict | None = None, speaker_hint: bool = True) -> tuple[list[dict[str, Any]], str]:
+def reply_language(messages: list[dict[str, Any]]) -> str:
+    """The language she answers in, from llmcord's conversation (newest first)."""
+    return language([clean_user_text(text_of(m["content"])) for m in messages if m["role"] == "user"])
+
+
+# An image without a caption, so the "Name: text" line isn't empty
+IMAGE_ONLY = {"ru": "(картинка)", "en": "(a picture)"}
+
+
+def prepare(
+    messages: list[dict[str, Any]], prompts: dict | None = None, speaker_hint: bool = True, notes: list[str] = ()
+) -> tuple[list[dict[str, Any]], str]:
     """messages: llmcord's conversation, newest first, without a system prompt.
     A user message may have a "name" (the author's display name): it goes in front of the text as "Name: text", so she
     can tell people apart. prompts overrides PROMPTS, speaker_hint=False drops SPEAKER_HINTS (for testing).
+    notes: system notes for this reply only (satellite.py: facts from a web search), put right before the newest message.
 
     Returns her full prompt (newest first, like llmcord keeps it) and the reply language.
     """
-    user_texts = [clean_user_text(m["content"]) for m in messages if m["role"] == "user" and isinstance(m["content"], str)]
-    lang = language(user_texts)
+    lang = reply_language(messages)
     prompt = (prompts or PROMPTS)[lang]
 
     chat = []
     for msg in messages:
-        content = msg["content"]
-        if isinstance(content, str):
-            content = content.strip() if msg["role"] == "assistant" else clean_user_text(content)
-            if not content:
+        images = [part for part in msg["content"] if part.get("type") == "image_url"] if isinstance(msg["content"], list) else []
+        text = text_of(msg["content"])
+        text = text.strip() if msg["role"] == "assistant" else clean_user_text(text)
+        if not text:
+            if not images:
                 continue
-            if msg["role"] == "user" and msg.get("name"):
-                content = f"{msg['name']}: {content}"
-        chat.append(dict(role=msg["role"], content=content))
+            text = IMAGE_ONLY[lang]
+        if msg["role"] == "user" and msg.get("name"):
+            text = f"{msg['name']}: {text}"
+        chat.append(dict(role=msg["role"], content=[dict(type="text", text=text)] + images if images else text))
 
     if speaker_hint and chat and chat[0]["role"] == "user" and (name := messages[0].get("name")):
         chat.insert(1, dict(role="system", content=SPEAKER_HINTS[lang].format(name=name)))
+
+    # Newest first: [newest message, speaker hint, notes, ...], so she reads the notes, then the hint, then the message
+    if notes and chat and chat[0]["role"] == "user":
+        at = 2 if len(chat) > 1 and chat[1]["role"] == "system" else 1
+        chat[at:at] = [dict(role="system", content=note) for note in notes]
 
     examples = []
     for user, reply in prompt["examples"]:

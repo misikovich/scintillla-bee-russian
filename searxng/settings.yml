@@ -1,0 +1,11 @@
+# SearXNG for the bee's satellite (search.py): JSON API only, no rate limiter (only the bot talks to it)
+use_default_settings: true
+server:
+  secret_key: "bee-bot-local-only"
+  limiter: false
+  image_proxy: false
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json

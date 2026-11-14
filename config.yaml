@@ -7,7 +7,8 @@ status_message: bzz~
 
 # Short histories keep her on topic
 max_text: 2000
-max_images: 0
+# She sees images (DeepSeek v4.1 Flash takes them); older ones in the reply chain are sent again with every reply
+max_images: 2
 max_messages: 8
 
 use_plain_responses: true
@@ -52,13 +53,28 @@ models:
   # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
   # Default since 2026-11-11: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI, ~0.5 s. If node-mbp's proxy or
   # Mistral is down she doesn't answer. Mistral rejects fields it doesn't know (422 extra_forbidden)
-  cliproxy/mistral/deepseek-v4-1-flash-1017:
+  # ":vision" tells llmcord the model takes images (stripped before the API call)
+  cliproxy/mistral/deepseek-v4-1-flash-1017:vision:
     temperature: 0.7
     max_tokens: 150
 
+# Satellite ("dynamic context", satellite.py): before she answers, this model decides whether the newest message needs a
+# web search; if so it summarizes the results into a note for her reply. Within `timeout` seconds or she answers without
+# it. Delete the block to turn it off. Bee models only.
+# search: tavily (TAVILY_API_KEY), exa (EXA_API_KEY) or searxng (the searxng service in docker-compose.yaml, no key)
+satellite:
+  model: cliproxy/mistral/deepseek-v4-1-flash-1017
+  params: {}
+  search: tavily
+  search_api_key_env: TAVILY_API_KEY
+  searxng_url: http://searxng:8080
+  results: 5
+  snippet_chars: 500
+  timeout: 5
+
 # Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:
-  - cliproxy/mistral/deepseek-v4-1-flash-1017
+  - cliproxy/mistral/deepseek-v4-1-flash-1017:vision
 
 # Unused: bee_models get their system prompt from bee.py
 system_prompt:

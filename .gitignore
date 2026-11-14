@@ -10,5 +10,9 @@
 !Dockerfile
 !config.yaml
 !docker-compose.yaml
+!searxng/
+!searxng/settings.yml
+!docs/
+!docs/*.svg
 !requirements.txt
 !.env.example
