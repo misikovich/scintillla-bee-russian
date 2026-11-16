@@ -49,6 +49,11 @@ providers:
     base_url: http://10.10.0.50:8317/v1
     api_key_env: CLIPROXY_API_KEY
 
+  # OpenRouter, for image generation (imagegen:)
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+
 models:
   # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
   # Default since 2026-11-11: DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI, ~0.5 s. If node-mbp's proxy or
@@ -71,6 +76,23 @@ satellite:
   results: 5
   snippet_chars: 500
   timeout: 5
+
+# Image generation (imagegen.py): when the satellite's router sees a request to draw (or to change a picture), `writer`
+# (a vision model, low reasoning) writes the image prompt from the request, the chat and the attached pictures, `model`
+# draws it (OpenRouter's Images API) and the picture goes with her reply. Text-to-image only: a change to a picture is a
+# redraw from its description. Needs `satellite:`. Delete the block to turn it off. Bee models only.
+imagegen:
+  writer: cliproxy/mistral/deepseek-v4-1-flash-1017:vision
+  writer_params:
+    reasoning_effort: low
+    max_tokens: 4000
+  writer_timeout: 30
+  model: openrouter/recraft/recraft-v4.1-flash-v2:free
+  image_timeout: 60
+  # used when the request names no style
+  style: a clean, colorful digital illustration.
+  max_input_images: 2
+  per_user_per_hour: 10
 
 # Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:

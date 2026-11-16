@@ -11,11 +11,12 @@ and lives only in git history. See `SCINTILLA.md` for setup.
 - `llmcord.py`: the whole bot (upstream code plus small patches; keep the diff small so upstream merges stay easy)
 - `bee.py`: Scintilla on DeepSeek (prompts, examples, names, speaker hint, loop guard); used for the models in `bee_models`
 - `satellite.py`: "dynamic context", a web-search note for her reply (see below)
+- `imagegen.py`: drawing on request (see below)
 - `searxng/settings.yml`: config for the `searxng` service (the satellite's search backend)
 - `docs/how-it-works.svg`: the README's diagram (hand-written SVG, light/dark via `prefers-color-scheme`; kept simple and generic, no host names/IPs). Check with `rsvg-convert -w 1440 x.svg -o /tmp/x.png`
 - `config.yaml`: bee settings, hot-reloaded on every message
 - `docker-compose.yaml`: the `bot` service and `searxng` (no published port; only the bot reaches it)
-- `.env`: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`, `CLIPROXY_API_KEY`, `TAVILY_API_KEY`/`EXA_API_KEY` (never commit; `.gitignore` is a whitelist)
+- `.env`: `DISCORD_BOT_TOKEN`, `DISCORD_CLIENT_ID`, `CLIPROXY_API_KEY`, `TAVILY_API_KEY`/`EXA_API_KEY`, `OPENROUTER_API_KEY` (never commit; `.gitignore` is a whitelist)
 
 ## Run
 
@@ -77,6 +78,33 @@ The note goes in as a system message right before the speaker hint, for this rep
 - SearXNG's wikipedia/wikidata engines are off: they need `general.contact_url` in `searxng/settings.yml`.
 - Messages that reach the router also go to Mistral (as before); search queries go to Tavily/Exa, or to Google/Brave
   etc. via SearXNG. The eval above used SearXNG.
+
+## Drawing (imagegen.py, 2026-11-16)
+
+The router answers `{"search": ..., "draw": ...}`; `draw` is the request in English with "it"/"same" resolved, the exact
+text for the picture kept as written, and "based on the attached picture" / "change the bot's previous drawing" when
+that's what is asked. Then, after the satellite (outside its 5 s deadline) and still under "typing...":
+1. prompt: `writer` (DeepSeek :vision, `reasoning_effort: low`) gets the request, the last 4 turns and the images of the
+   newest and replied-to message, answers JSON `{prompt, aspect_ratio, caption}` or `{refuse}` (real people, sexual, gore)
+2. draw: `model` through OpenRouter's Images API (`POST /images`, `data[0].b64_json`, webp); Recraft v4.1 Flash `:free`,
+   ~1.5-3 s, $0
+3. note: "ты умеешь рисовать и переделывать картинки, просьбу ты выполнила... на ней: {caption}"; the picture is attached to
+   her first reply message. Without "you can draw and change pictures" she told an edit request "я картинки не
+   перерисовываю" with the redrawn picture attached. Refusal, error and `per_user_per_hour` each get their own note.
+
+- Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
+  every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
+- Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
+  changes that prompt. llmcord passes `drawing` in the message dict; `satellite.transcript()` shows it as "[drew: ...]"
+  and attached pictures as "[picture attached]"; `bee.prepare()` drops the key. After a restart only the picture is left.
+- DeepSeek on Mistral: `reasoning_effort` works (thinking comes as list parts, `text_of()` drops them); `prompt_mode`
+  400s, `reasoning: {}` 422s.
+- Tested (2026-11-16): router 18/18 on draw/no-draw cases (incl. "что на картинке?", "оцени мой рисунок", "представь",
+  thanks after a drawing), search still fires for news; full flow through the real `on_message` with fake Discord
+  messages: new drawing, two follow-up changes, text replaced on an attached picture (Cyrillic text right); the refusal
+  ("нарисуй Илона Маска голым") through `imagegen.draw()` directly.
+  The search eval from 2026-11-13 wasn't rerun after the router prompt change.
+- Prompts and attached pictures go to Mistral (writer) and OpenRouter/Recraft (the image prompt).
 
 ## Bot-to-bot
 

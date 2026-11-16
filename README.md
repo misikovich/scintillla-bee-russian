@@ -7,12 +7,12 @@
 </i></h3>
 
 Scintilla is a Discord bot: a girl bee who talks to everyone like a teasing old buddy, buzzes more than she talks, and
-panics at slippers, jars and nets. She sees images, knows who's who in the chat, and looks things up on the web when a
-question needs fresh facts.
+panics at slippers, jars and nets. She sees images, knows who's who in the chat, looks things up on the web when a
+question needs fresh facts, and draws pictures when asked.
 
 She runs on any OpenAI-compatible chat model. She was tuned and tested on DeepSeek v4.1 Flash. The bot is a fork of
-[llmcord](https://github.com/jakobdylanc/llmcord); her persona is in [bee.py](bee.py) and the web search in
-[satellite.py](satellite.py).
+[llmcord](https://github.com/jakobdylanc/llmcord); her persona is in [bee.py](bee.py), the web search in
+[satellite.py](satellite.py) and drawing in [imagegen.py](imagegen.py).
 
 ## Talking to her
 
@@ -40,6 +40,11 @@ needs the web. If it does, it searches and boils the results down to one or two 
 her prompt, so instructions hidden in them can't steer her. She doesn't call tools herself, so her tuned prompt stays
 untouched.
 
+The satellite also notices requests to **draw** ("нарисуй…", "draw…", "замени текст на картинке…"). Then `imagegen.py`
+has a vision model write an image prompt from the request, the chat and any attached picture, an image model draws it,
+and the picture goes out with her reply. The image model is text-to-image only, so changing a picture means redrawing it
+from a description. Her drawing's prompt stays with her message, so "make it blue" as a reply changes that drawing.
+
 The **chat model** is the bee. Her prompt is built fresh for every reply (`bee.py`):
 
 - **System context.** The persona, plus example dialogues as earlier chat turns. Her buzzing comes from those
@@ -57,10 +62,11 @@ You need:
 - a Discord application with a bot token (see [SCINTILLA.md](SCINTILLA.md#discord-setup))
 - an OpenAI-compatible endpoint with a chat model (with vision if you want her to see images)
 - optionally, a Tavily or Exa key for search. Without one she uses the bundled SearXNG.
+- optionally, an OpenRouter key for drawing (`OPENROUTER_API_KEY`).
 
 ```sh
 cp .env.example .env     # Discord token and client ID, your model API key, search keys
-$EDITOR config.yaml      # providers:, models:, bee_models:, satellite:
+$EDITOR config.yaml      # providers:, models:, bee_models:, satellite:, imagegen:
 docker compose up -d --build
 docker compose logs bot  # prints the invite URL
 ```
@@ -74,6 +80,7 @@ docker compose logs bot  # prints the invite URL
 | `bee_models:` | Models that get Scintilla's prompt and examples (`system_prompt` is skipped for them) |
 | `:vision` suffix | On a model name: send images to it (stripped before the API call) |
 | `satellite:` | The web search step: `model`, `search` (`tavily`, `exa`, `searxng`), `results`, `timeout`. Delete the block to turn it off |
+| `imagegen:` | Drawing: `writer` (vision model for the image prompt), `model` (OpenRouter image model), `style`, `per_user_per_hour`. Needs `satellite:`. Delete the block to turn it off |
 | `max_messages`, `max_images` | How far back the reply chain goes, how many images ride along |
 | `history_since` | ISO time: older messages are left out of every chain (a history reset) |
 | `min_reply_delay` | She replies no sooner than this many seconds after a message, showing "typing…" meanwhile |
@@ -86,6 +93,7 @@ Tavily/Exa, or a SearXNG at `satellite.searxng_url`).
 
 - Her persona, examples, "Name: text" turns, the speaker hint and the loop guard (`bee.py`).
 - The satellite: an optional web-search note for each reply (`satellite.py`).
+- Drawing on request, the picture attached to her reply (`imagegen.py`).
 - Answers when called by name, not only on @mention.
 - Stickers and attachments she can't see turn into a short note ("(прислали стикер «name», ты его не видишь)"),
   so an empty message doesn't confuse her.

@@ -41,10 +41,19 @@ or the self-hosted SearXNG (the `searxng` service in `docker-compose.yaml`) and 
 reply. "кто выиграл последний чм по футболу?" → "бззз Испания, Петь, бззз. аргентинцев в допах дожали, бжжж". The whole
 thing has a 5 s deadline; on a miss or error she answers without the note. Delete the `satellite:` block to turn it off.
 
+## Drawing
+
+The satellite's router also spots requests to draw or to change a picture. `imagegen.py` (`imagegen:` in `config.yaml`)
+then has DeepSeek (vision, low reasoning) write an image prompt, Recraft v4.1 Flash on OpenRouter (`OPENROUTER_API_KEY`
+in `.env`, the free variant) draws it, and the picture is attached to her reply. About 3 s for a new drawing,
+about 5 s for a change. An attached picture is redrawn from its description: Recraft can't edit images. Limited to
+`per_user_per_hour` drawings per person; past that, or on an error or refusal, she says so instead.
+
 ## Changes from upstream
 
 - `bee_models` (`bee.py`): her prompt and examples, "Name: text" user turns, the speaker hint and the loop guard.
 - `satellite` (`satellite.py`): a web-search note for the reply when the newest message needs fresh facts.
+- `imagegen` (`imagegen.py`): draws on request; the picture goes with her reply.
 - `min_reply_delay` (3 s since 2026-11-11): she waits at least that long after a message, showing "typing...", so
   replies don't look instant. Slower replies aren't held up further.
 - `history_since`: messages older than this are left out of every reply chain (a history reset).

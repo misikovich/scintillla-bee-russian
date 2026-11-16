@@ -2,6 +2,7 @@ import asyncio
 from base64 import b64encode
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from io import BytesIO
 import logging
 import os
 import re
@@ -16,6 +17,7 @@ from openai import AsyncOpenAI
 import yaml
 
 import bee
+import imagegen
 import satellite
 
 load_dotenv()
@@ -83,6 +85,9 @@ class MsgNode:
 
     # Display name of the author, so bee models can tell people apart (see bee.py)
     author_name: Optional[str] = None
+
+    # The image prompt of the picture she drew in this reply (imagegen.py), so a follow-up can change it
+    drawing: Optional[str] = None
 
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -289,7 +294,11 @@ async def on_message(new_msg: discord.Message) -> None:
                 content = curr_node.text[:max_text]
 
             if content != "":
-                messages.append(dict(content=content, role=curr_node.role) | (dict(name=curr_node.author_name) if bee_mode and curr_node.role == "user" else {}))
+                messages.append(
+                    dict(content=content, role=curr_node.role)
+                    | (dict(name=curr_node.author_name) if bee_mode and curr_node.role == "user" else {})
+                    | (dict(drawing=curr_node.drawing) if bee_mode and curr_node.drawing else {})
+                )
 
             if len(curr_node.text) > max_text:
                 user_warnings.add(f"⚠️ Max {max_text:,} characters per message")
@@ -304,12 +313,18 @@ async def on_message(new_msg: discord.Message) -> None:
 
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
+    drawing = None
     if bee_mode:
         # Dynamic context (satellite.py): a second model may search the web first and give her a note for this reply
-        notes = []
+        notes, draw_request = [], None
         if satellite_cfg := config.get("satellite"):
             async with new_msg.channel.typing():
-                notes = await satellite.notes(messages, bee.reply_language(messages), satellite_cfg, config["providers"], httpx_client)
+                lang = bee.reply_language(messages)
+                notes, draw_request = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
+                # Asked to draw (imagegen.py): the picture goes with her reply, a note tells her about it
+                if draw_request and (imagegen_cfg := config.get("imagegen")):
+                    drawing = await imagegen.draw(draw_request, messages, lang, new_msg.author.id, imagegen_cfg, config["providers"], httpx_client)
+                    notes.append(drawing["note"])
         messages, _ = bee.prepare(messages, notes=notes)
 
     if (system_prompt := config.get("system_prompt")) and not bee_mode:
@@ -337,6 +352,8 @@ async def on_message(new_msg: discord.Message) -> None:
 
     async def reply_helper(**reply_kwargs) -> None:
         reply_target = new_msg if not response_msgs else response_msgs[-1]
+        if drawing and drawing["image"] and not response_msgs:
+            reply_kwargs["file"] = discord.File(BytesIO(drawing["image"]), filename=f"bee.{drawing['media_type'].split('/')[-1]}")
         response_msg = await reply_target.reply(**reply_kwargs)
         response_msgs.append(response_msg)
 
@@ -405,6 +422,9 @@ async def on_message(new_msg: discord.Message) -> None:
 
     for response_msg in response_msgs:
         msg_nodes[response_msg.id].text = model_text or "".join(response_contents)
+        if drawing and drawing["image"] and response_msg == response_msgs[0]:
+            msg_nodes[response_msg.id].drawing = drawing["prompt"]
+            msg_nodes[response_msg.id].images = [dict(type="image_url", image_url=dict(url=f"data:{drawing['media_type']};base64,{b64encode(drawing['image']).decode()}"))]
         msg_nodes[response_msg.id].lock.release()
 
     # Delete oldest MsgNodes (lowest message IDs) from the cache
