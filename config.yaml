@@ -94,7 +94,7 @@ imagegen:
   free_timeout: 20
   image_timeout: 60
   # used when the request names no style
-  style: a clean, colorful digital illustration.
+  style: a hyperrealistic photo, real camera, real light, detailed skin, hair, fur and fabric textures, shallow depth of field.
   max_input_images: 2
   per_user_per_hour: 30
 

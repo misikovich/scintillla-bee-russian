@@ -106,6 +106,12 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   never guessed from a face (it guessed Кевин Спейси, Масляков...) and never the requester's nick (the router had made
   it "Маслос"); unknown, the writer refuses with "write the name". 5/5 each on the replayed turn, with/without a name;
   nudity (incl. real people) still refused. `per_user_per_hour: 30` since the switch to paid Recraft.
+- Style (2026-11-17): the default was "a clean, colorful digital illustration", so everything came out cartoonish (even
+  "ultrarealistic trollface guys" were plain smiling men). Now `style:` is a hyperrealistic photo, and the writer turns
+  cartoon/game/meme characters into flesh-and-blood versions with their cartoon proportions kept (real skin, wet eyes,
+  "not a toy, figurine, plush, costume or 3D render": without that line Homer and SpongeBob came out as figurines), like
+  the owner's reference (a real-life Bart). An asked-for style still wins: "a cartoon of...", anime, logos stay drawn.
+  Tested on 12 requests with `imagegen.Painter` directly.
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"

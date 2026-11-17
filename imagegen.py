@@ -36,6 +36,20 @@ Write the image prompt in English, 40-120 words: subject, composition, setting, 
 the image model can't see it: describe that picture in detail (layout, subjects, colors, style, every text on it) and apply the change.
 - Text on the picture: put it in double quotes, exactly as asked, in its original language and spelling.
 - Style: what the request asks for; if nothing, {style}
+- Cartoon, anime, game or meme characters (Homer, SpongeBob, Pepe, trollface...) and drawn things, unless a cartoon or \
+drawing is asked for: show them as if they were born in real life, of flesh and blood, in a real photo: real skin with \
+pores, blemishes, wrinkles and fine hairs, wet glossy eyes with eyelashes, real hair, lips and teeth, fabric and fur; \
+humanoid ones get human skin. Keep their cartoon proportions and features exaggerated and recognizable (head shape, huge \
+eyes, odd nose or mouth, spiky hair, skin color, clothes): not a normal human or animal, and not a toy, figurine, \
+plush, costume, mask or 3D render. Hyperrealistic, uncanny and funny. Don't use the words cartoon, illustration, \
+outlines or cel-shaded for them.
+- Text on the picture: put it in double quotes, exactly as asked, in its original language and spelling.
+- Style: what the request asks for; if nothing, {style}
+- Cartoon, anime, game or meme characters (Homer, SpongeBob, Pepe, trollface...) and drawn things, unless a cartoon or \
+drawing is asked for: show them as if they existed in real life, a real photo of them: real skin with pores and \
+wrinkles, wet eyes, real hair, fabric and fur, but keep their cartoon proportions and features exaggerated (head shape, \
+huge eyes, odd nose or mouth, spiky hair, skin color), not a normal human, a costume or a mask: hyperrealistic, \
+slightly uncanny and funny. Don't use the words cartoon, illustration, outlines or cel-shaded for them.
 - Allowed: swearing, crude jokes and rude meme text, fictional characters, cartoon parodies, dark humor. Draw these, don't refuse.
 - Obscene words in the picture's text (мат, words for genitals or sex, fuck, dick, cunt...): keep the first letter and \
 replace the rest with *, one per letter ("п****", "х**", "иди н****", "f***"). Mild words (жопа, дурак, damn, shit) as written. \
@@ -67,7 +81,7 @@ NOTES = {
 
 LANGUAGES = {"ru": "Russian", "en": "English"}
 RATIOS = ("1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16")
-DEFAULT_STYLE = "a clean, colorful digital illustration."
+DEFAULT_STYLE = "a hyperrealistic photo: real camera, real light, detailed skin, hair, fur and fabric textures, shallow depth of field."
 
 # user ID -> times of their drawings, for `per_user_per_hour`
 drawn_at: dict[int, list[float]] = {}
