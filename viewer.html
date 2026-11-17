@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bee Viewer</title>
+<style>
+:root {
+  --bg: #f6f3ea; --panel: #fffdf7; --ink: #23201a; --muted: #776f62; --faint: #a39b8b; --line: #e2dac8;
+  --honey: #b97d00; --honey-bar: #e0a21b; --honey-soft: #fbedc6; --ok: #2f8a4c; --ok-soft: #e1f1e5; --err: #c0392b; --err-soft: #f9e1dd;
+  --run: #2a6fd6; --run-soft: #e0eafb; --code: #f1ece0; --her: #fff5d6;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15130f; --panel: #1e1b16; --ink: #ece6d8; --muted: #a39a88; --faint: #6f6858; --line: #36312a;
+    --honey: #f0b43a; --honey-bar: #d99a1e; --honey-soft: #3d3016; --ok: #5cc27d; --ok-soft: #1a2e21; --err: #ef6f5f; --err-soft: #3a1e1a;
+    --run: #6ea2f5; --run-soft: #1a2740; --code: #27231c; --her: #2c2416;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+a { color: var(--run); }
+button { font: inherit; font-size: 13px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button.on { background: var(--honey-soft); border-color: var(--honey-bar); }
+input[type=search] { font: inherit; font-size: 13px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; min-width: 0; }
+.muted { color: var(--muted); } .mono { font-family: var(--mono); font-size: 12px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); display: inline-block; flex: none; }
+.dot.ok { background: var(--ok); } .dot.err { background: var(--err); } .dot.run { background: var(--run); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.stats b { color: var(--ink); font: 600 12px var(--mono); }
+.spacer { flex: 1; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { border-radius: 6px; }
+.tabs button.on { font-weight: 600; }
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--err); color: #fff; font-size: 11px; line-height: 17px; text-align: center; }
+.badge:empty { display: none; }
+
+/* replies tab: list + story */
+#replies { display: grid; grid-template-columns: 340px minmax(0, 1fr); }
+#turns { border-right: 1px solid var(--line); overflow-y: auto; height: calc(100vh - var(--hh, 53px)); position: sticky; top: var(--hh, 53px); }
+.turn { padding: 10px 14px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; cursor: pointer; }
+.turn:hover { background: var(--code); }
+.turn.sel { background: var(--honey-soft); border-left-color: var(--honey-bar); }
+.turn .top { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+.turn .top b { color: var(--ink); font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn .top .t { margin-left: auto; font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+.turn .in, .turn .out { font-size: 13px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.turn .in { margin-top: 2px; }
+.turn .out { margin-top: 3px; padding-left: 10px; border-left: 2px solid var(--honey-bar); color: var(--muted); }
+.turn .out.err { border-left-color: var(--err); color: var(--err); }
+.turn .out.wait { border-left-color: var(--run); color: var(--run); font-style: italic; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.chip { font-size: 11px; line-height: 17px; padding: 0 7px; border-radius: 9px; background: var(--code); color: var(--muted); white-space: nowrap; }
+.chip.s { background: var(--run-soft); color: var(--run); } .chip.d { background: var(--honey-soft); color: var(--honey); }
+.chip.e { background: var(--err-soft); color: var(--err); } .chip.p { background: var(--err-soft); color: var(--err); }
+.empty { color: var(--muted); padding: 40px 16px; text-align: center; }
+
+#view { padding: 18px 22px 40px; min-width: 0; max-width: 1050px; }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 12px; }
+.head h2 { margin: 0; font-size: 18px; }
+.head .muted { font-size: 13px; }
+.head .muted b { color: var(--ink); font-family: var(--mono); font-size: 12.5px; }
+
+/* the exchange: their message, her reply */
+.convo { display: flex; flex-direction: column; gap: 8px; margin-bottom: 22px; }
+.bubble { padding: 9px 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); white-space: pre-wrap; word-break: break-word; font-size: 15px; max-width: 760px; width: fit-content; min-width: 200px; }
+.bubble .who { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 2px; white-space: normal; }
+.bubble.her { background: var(--her); border-color: color-mix(in srgb, var(--honey-bar) 45%, var(--line)); margin-left: 28px; }
+.bubble.her.err { background: var(--err-soft); border-color: var(--err); color: var(--err); font-size: 13.5px; }
+.bubble.her.wait { background: var(--run-soft); border-color: var(--run); color: var(--run); font-style: italic; font-size: 13.5px; }
+.bubble.her.quiet { background: transparent; border-style: dashed; color: var(--muted); font-size: 13.5px; }
+.bubble img { display: block; max-width: min(200px, 100%); max-height: 200px; border-radius: 6px; margin-top: 8px; border: 1px solid var(--line); }
+
+/* the story: one row per stage */
+h3.sec { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; display: flex; gap: 10px; align-items: baseline; }
+h3.sec span { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.steps { position: relative; }
+.step { display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 8px; }
+.step .rail { position: relative; display: flex; justify-content: center; }
+.step .rail::after { content: ""; position: absolute; top: 20px; bottom: -2px; width: 2px; background: var(--line); }
+.step:last-child .rail::after { display: none; }
+.step .rail .dot { margin-top: 7px; width: 11px; height: 11px; border: 2px solid var(--bg); box-sizing: content-box; position: relative; z-index: 1; }
+.step .body { padding-bottom: 14px; min-width: 0; }
+.step .line { display: grid; grid-template-columns: 100px minmax(0, 1fr) 110px 58px; gap: 10px; align-items: baseline; }
+.step .name { font-weight: 650; font-size: 13.5px; white-space: nowrap; }
+.step .sum { min-width: 0; overflow-wrap: anywhere; }
+.step .wf { position: relative; height: 6px; border-radius: 3px; background: var(--code); align-self: center; }
+.step .wf i { position: absolute; top: 0; bottom: 0; border-radius: 3px; min-width: 3px; background: var(--honey-bar); }
+.step.running .wf i { background: var(--run); }
+.step.error .wf i { background: var(--err); }
+.step .ms { font: 12px var(--mono); color: var(--muted); text-align: right; white-space: nowrap; }
+.step.skipped .body { padding-bottom: 8px; }
+.step.skipped .name, .step.skipped .sum, .step.pending .name, .step.pending .sum { color: var(--faint); font-weight: 400; }
+.step.error .sum { color: var(--err); }
+.step.running .sum { color: var(--run); }
+.step .more { margin: 6px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.subs { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: 1px; }
+.subs span { font-size: 10.5px; line-height: 15px; padding: 0 5px; border-radius: 4px; background: var(--code); color: var(--faint); }
+.subs span.on { background: var(--ok-soft); color: var(--ok); } .subs span.cur { background: var(--run); color: #fff; }
+
+.note { padding: 7px 11px; border-radius: 7px; background: var(--ok-soft); border-left: 3px solid var(--ok); white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+.note .k { display: block; font-size: 11px; color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 0; font-size: 13px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; word-break: break-word; white-space: pre-wrap; }
+pre { background: var(--code); border-radius: 6px; padding: 8px 10px; margin: 0; font: 12px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; max-height: 440px; overflow: auto; }
+pre.err { color: var(--err); background: var(--err-soft); }
+.pic { display: block; max-width: min(240px, 100%); max-height: 240px; border-radius: 6px; border: 1px solid var(--line); }
+details > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; width: fit-content; }
+details > summary:hover { color: var(--ink); }
+details[open] > summary { margin-bottom: 6px; }
+.res { border-top: 1px solid var(--line); padding: 6px 0; font-size: 12.5px; } .res b { font-size: 13px; }
+.msgs { display: flex; flex-direction: column; gap: 5px; }
+.m { display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 10px; padding: 5px 8px; border-radius: 6px; border-left: 3px solid var(--line); background: var(--bg); }
+.m .r { font: 11px/1.4 var(--mono); color: var(--muted); padding-top: 2px; }
+.m .c { white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+.m.user { border-left-color: var(--run); } .m.assistant { border-left-color: var(--honey-bar); } .m.system { border-left-color: var(--faint); }
+.m.system .c { color: var(--muted); font-size: 12.5px; }
+.m.note { border-left-color: var(--ok); background: var(--ok-soft); } .m.note .c { color: var(--ink); }
+.m.ex { opacity: .55; }
+.m img { max-width: 200px; max-height: 200px; border-radius: 6px; display: block; margin-top: 4px; border: 1px solid var(--line); }
+
+/* log lines (in a reply and in the log tab) */
+.loglist { font: 12px/1.5 var(--mono); }
+.ll { display: grid; grid-template-columns: 92px 62px minmax(0, 1fr); gap: 10px; padding: 3px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.ll .msg { white-space: pre-wrap; word-break: break-word; }
+.ll .msg .src { color: var(--faint); margin-right: 6px; }
+.ll .msg .tl { font-family: var(--sans); font-size: 11.5px; margin-left: 8px; cursor: pointer; }
+.ll .at { color: var(--faint); white-space: nowrap; }
+.lv { font-size: 10.5px; font-weight: 600; letter-spacing: .03em; color: var(--faint); }
+.ll.WARNING { background: color-mix(in srgb, var(--honey-soft) 55%, transparent); } .ll.WARNING .lv { color: var(--honey); }
+.ll.ERROR, .ll.CRITICAL { background: var(--err-soft); } .ll.ERROR .lv, .ll.CRITICAL .lv { color: var(--err); }
+.ll.INFO .lv { color: var(--muted); }
+.turnlogs, .calls { margin-top: 18px; }
+.calls table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.calls th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.calls td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); vertical-align: top; }
+.calls td.n { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; }
+.calls tr.err td { background: var(--err-soft); }
+.calls td details pre { max-height: 220px; }
+.calls .wrap { overflow-x: auto; }
+.turnlogs .loglist { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+
+#log { padding: 0 16px 16px; }
+.logbar { position: sticky; top: var(--hh, 53px); z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; background: var(--bg); }
+.logbar input { flex: 1 1 200px; max-width: 360px; }
+#logrows { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }
+#jump { position: fixed; right: 20px; bottom: 20px; display: none; box-shadow: 0 2px 8px rgb(0 0 0 / .15); }
+
+[hidden] { display: none !important; }
+@media (max-width: 860px) {
+  #replies { grid-template-columns: 1fr; }
+  #turns { position: static; height: auto; max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); }
+  #view { padding: 14px 16px 32px; }
+  .step .line { grid-template-columns: 1fr auto; }
+  .step .sum { grid-column: 1 / -1; grid-row: 2; }
+  .step .wf { display: none; }
+  .bubble.her { margin-left: 14px; }
+  .m { grid-template-columns: 1fr; gap: 2px; }
+  .ll { grid-template-columns: 76px 1fr; } .ll .lv { display: none; }
+  h3.sec span { display: none; }
+  .logbar, #turns { top: 0; }
+  header { position: static; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot" id="conn" title="live connection"></span>scintilla bee</h1>
+  <div class="stats">
+    <span>discord <b id="s-ready">…</b></span>
+    <span>model <b id="s-model">…</b></span>
+    <span>ping <b id="s-lat">…</b></span>
+    <span>up <b id="s-up">…</b></span>
+    <span>cached msgs <b id="s-nodes">…</b></span>
+    <span>search <b id="s-sat">…</b> · draw <b id="s-img">…</b></span>
+  </div>
+  <span class="spacer"></span>
+  <div class="tabs">
+    <button id="tab-replies" class="on">Replies</button>
+    <button id="tab-log">Log<span class="badge" id="logbadge"></span></button>
+  </div>
+  <button id="follow" class="on" title="Always show the newest reply">● follow live</button>
+</header>
+
+<main id="replies">
+  <nav id="turns"><div class="empty">No messages yet.<br>Talk to her on Discord.</div></nav>
+  <section id="view"><div class="empty">Waiting for her first message…</div></section>
+</main>
+
+<main id="log" hidden>
+  <div class="logbar">
+    <button id="lf-all" class="on">All</button>
+    <button id="lf-warn">Warnings &amp; errors</button>
+    <button id="lf-bee" title="Hide lines from discord.py and other libraries">Bot only</button>
+    <input type="search" id="lq" placeholder="Filter text…">
+    <span class="muted" id="logcount"></span>
+  </div>
+  <div id="logrows" class="loglist"></div>
+  <button id="jump">↓ newest</button>
+</main>
+
+<script>
+const STEPS = [
+  ["chain", "Reply chain"], ["satellite", "Satellite"], ["draw", "Draw"],
+  ["prompt", "Prompt"], ["model", "Model"], ["reply", "Reply"],
+];
+const SKIPPED = { satellite: "off", draw: "nobody asked her to draw", prompt: "not her own model", model: "not called", reply: "nothing sent" };
+const turns = new Map();
+let logs = [], state = {}, sel = null, follow = true, tab = "replies", logFilter = "all", beeOnly = false, logSeen = 0;
+const openState = {};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ms = (v) => v == null ? "" : v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(v < 10000 ? 2 : 1)} s`;
+const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+const dur = (s) => { s = Math.floor(s); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${s % 60}s`; };
+const firstLine = (s) => String(s ?? "").trim().split("\n").pop();  // tracebacks end with the actual error
+const quote = (s) => `“${s}”`;
+const num = (n) => (n ?? 0).toLocaleString();
+const tokens = (u) => u && (u.prompt_tokens != null || u.completion_tokens != null) ? `${num(u.prompt_tokens)} → ${num(u.completion_tokens)} tokens` : u?.cost != null ? `$${u.cost}` : "";
+const statusDot = (s) => ({ done: "ok", running: "run", error: "err" }[s] || "");
+let clockSkew = 0;  // server time minus browser time, for live elapsed times
+const elapsed = (t) => Math.max(0, Math.round((Date.now() / 1000 + clockSkew - t.at) * 1000));
+const turnMs = (t) => t.status === "running" ? elapsed(t) : t.ms;
+
+function textOf(content) {
+  if (typeof content === "string") return { text: content, images: [] };
+  const parts = Array.isArray(content) ? content : [];
+  return { text: parts.filter((p) => p.type === "text").map((p) => p.text).join(""), images: parts.filter((p) => p.type === "image_url").map((p) => p.image_url?.url) };
+}
+const stg = (t, k) => t.stages[k] || { status: "pending", data: {} };
+const firstError = (t) => STEPS.map(([k, label]) => [label, stg(t, k)]).find(([, s]) => s.status === "error");
+
+// --- one-line, plain-words summaries ---
+
+function summary(t, key) {
+  const st = stg(t, key), d = st.data || {};
+  if (st.status === "error") return firstLine(d.error) || "failed";
+  if (st.status === "skipped") return SKIPPED[key] || "skipped";
+  if (st.status === "pending") return t.status === "running" ? "waiting" : "not reached";
+  const running = st.status === "running";
+  switch (key) {
+    case "chain":
+      return running ? "collecting the messages it replies to…" : `${(d.messages || []).length} message${(d.messages || []).length === 1 ? "" : "s"} she remembers` + ((d.warnings || []).length ? ` · ⚠ ${d.warnings.join(", ")}` : "");
+    case "satellite": {
+      if (running) return { route: "deciding whether to search or draw…", search: `searching ${quote(d.query)}…`, summarize: `reading ${(d.results || []).length} results…` }[d.step] || "working…";
+      const parts = [];
+      if (d.panic) parts.push("🩴 threat spotted, she panics");
+      if (d.query) parts.push(d.fact ? `searched ${quote(d.query)}, found a fact` : (d.results || []).length ? `searched ${quote(d.query)}, nothing useful` : `searched ${quote(d.query)}, no results`);
+      if (d.draw) parts.push(`asked to draw: ${d.draw}`);
+      return parts.join(" · ") || "nothing to look up";
+    }
+    case "draw":
+      if (running) return d.step === "generate" ? `drawing${d.model ? " with " + d.model.split("/").pop() : ""}…` : "writing the image prompt…";
+      if (d.refused) return `refused: ${d.refused === true ? "yes" : d.refused}`;
+      if (d.limited) return "too many drawings this hour (per_user_per_hour)";
+      return d.caption ? `drew ${quote(d.caption)}` : d.image ? "drew a picture" : "done";
+    case "prompt":
+      return [d.lang && `${d.lang.toUpperCase()} prompt`, d.examples && `${d.examples / 2} example pairs`, `${(d.notes || []).length || "no"} note${(d.notes || []).length === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
+    case "model":
+      return running ? `${(d.model || "model")} is writing…` : `${d.model || "model"} · finished: ${d.finish_reason || "?"}` + (d.usage ? ` · ${tokens(d.usage)}` : "");
+    case "reply":
+      if (running) return "waiting a moment, then sending…";
+      return (t.info.replies || []).length ? `sent ${t.info.replies.length > 1 ? t.info.replies.length + " messages" : ""}`.trim() : "nothing sent";
+  }
+  return st.status;
+}
+
+// --- the list ---
+
+function outLine(t) {
+  const err = firstError(t), reply = stg(t, "reply").data.text;
+  if (err) return `<div class="out err">✕ ${esc(err[0])}: ${esc(firstLine(err[1].data.error))}</div>`;
+  if (reply) return `<div class="out">${esc(reply)}</div>`;
+  if (t.status === "running") { const k = STEPS.map(([k]) => k).filter((k) => stg(t, k).status === "running").pop(); return `<div class="out wait">${esc(k ? summary(t, k) : "working…")}</div>`; }
+  return `<div class="out wait" style="border-left-color:var(--line);color:var(--muted)">no reply</div>`;
+}
+
+function chips(t) {
+  const sat = stg(t, "satellite").data, c = [];
+  if (sat.panic) c.push('<span class="chip p">panic</span>');
+  if (sat.query) c.push('<span class="chip s">search</span>');
+  if (!["pending", "skipped"].includes(stg(t, "draw").status)) c.push('<span class="chip d">draw</span>');
+  if (t.info.bot) c.push('<span class="chip">bot</span>');
+  if (t.logs?.some((l) => l.level === "WARNING")) c.push('<span class="chip d">warning</span>');
+  c.push(`<span class="chip live-ms" data-id="${t.id}">${ms(turnMs(t))}</span>`);
+  return `<div class="chips">${c.join("")}</div>`;
+}
+
+function renderTurns() {
+  const list = [...turns.values()].sort((a, b) => b.id - a.id);
+  if (!list.length) return;
+  $("turns").innerHTML = list.map((t) => {
+    const dot = t.status === "running" ? "run" : t.status === "error" || firstError(t) ? "err" : t.status === "done" ? "ok" : "";
+    return `<div class="turn ${t.id === sel ? "sel" : ""}" data-id="${t.id}">
+      <div class="top"><span class="dot ${dot}"></span><b>${esc(t.info.author)}</b><span>#${esc(t.info.channel)}</span><span class="t">${clock(t.at)}</span></div>
+      <div class="in">${esc(t.info.content) || "<i class='muted'>(no text)</i>"}</div>
+      ${outLine(t)}${chips(t)}
+    </div>`;
+  }).join("");
+}
+
+// --- the selected reply ---
+
+function kv(pairs) {
+  const rows = pairs.filter(([, v]) => v != null && v !== "" && v !== false && !(typeof v === "object" && !Object.keys(v).length));
+  return rows.length ? `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v) : v)}</dd>`).join("")}</dl>` : "";
+}
+const fold = (k, title, body, open = false) => body ? `<details data-k="${k}" ${open ? "open" : ""}><summary>${title}</summary>${body}</details>` : "";
+const img = (u, cls = "pic") => u ? `<a href="${esc(u)}" target="_blank"><img class="${cls}" src="${esc(u)}" alt=""></a>` : "";
+
+function msgList(messages, opts = {}) {
+  const exEnd = opts.examples != null ? 1 + opts.examples : -1;  // her full prompt: system prompt, examples, then the chain
+  return `<div class="msgs">${messages.map((m, i) => {
+    const { text, images } = textOf(m.content);
+    const isEx = i > 0 && i < exEnd, isNote = m.role === "system" && i > 0 && !isEx;
+    const role = [m.role, m.name, isEx ? "example" : isNote ? "note" : ""].filter(Boolean).join("\n");
+    const extra = m.drawing ? fold(`drw${i}`, "her drawing prompt", `<pre>${esc(m.drawing)}</pre>`) : "";
+    return `<div class="m ${esc(m.role)} ${isNote ? "note" : ""} ${isEx ? "ex" : ""}"><span class="r">${esc(role).replace(/\n/g, "<br>")}</span><div class="c">${esc(text)}${images.map((u) => img(u, "")).join("")}${extra}</div></div>`;
+  }).join("")}</div>`;
+}
+
+function more(t, key) {
+  const st = stg(t, key), d = st.data || {}, k = `${t.id}:${key}`;
+  const err = d.error ? `<pre class="err">${esc(d.error)}</pre>` : "";
+  switch (key) {
+    case "chain":
+      return fold(`${k}:m`, "show the messages", d.messages ? msgList(d.messages) : "");
+    case "satellite":
+      return err + (d.fact ? `<div class="note"><span class="k">fact from the search${d.backend ? " (" + esc(d.backend) + ")" : ""}</span>${esc(d.fact)}</div>` : "") +
+        fold(`${k}:r`, `${(d.results || []).length} search results`, (d.results || []).map((r) => `<div class="res"><b>${esc(r.title)}</b> <span class="muted mono">${esc(r.date)}</span><br>${esc(r.content)}</div>`).join("")) +
+        fold(`${k}:n`, "the note she gets", d.note ? `<div class="note">${esc(d.note)}</div>` : "") +
+        fold(`${k}:t`, "what the router read", d.transcript ? `<pre>${esc(d.transcript)}</pre>` : "");
+    case "draw":
+      return err + (d.image ? img(d.image) : "") + (d.prompt ? `<pre>${esc(d.prompt)}</pre>` : "") +
+        kv([["request", d.request], ["aspect", d.aspect_ratio], ["size", d.kb ? `${d.kb} KB` : ""], ["model", d.model]]) +
+        fold(`${k}:n`, "the note she gets", d.note ? `<div class="note">${esc(d.note)}</div>` : "");
+    case "prompt": {
+      const m = stg(t, "model").data.messages;
+      return (d.notes || []).map((n) => `<div class="note"><span class="k">note for this reply</span>${esc(n)}</div>`).join("") +
+        fold(`${k}:p`, `her whole prompt${m ? ` (${m.length} messages; examples dimmed, notes green)` : ""}`, m ? msgList(m, { examples: d.examples || 0 }) : "");
+    }
+    case "model": {
+      const reply = stg(t, "reply").data.text, raw = d.raw;
+      const showRaw = raw != null && raw.trim() !== (reply || "").trim();
+      return err + kv([["params", d.params]]) +
+        fold(`${k}:raw`, showRaw ? "raw output (differs from what was sent)" : "raw output", raw != null ? `<pre>${esc(raw)}</pre>` : "", false) +
+        (d.messages && !stg(t, "prompt").data.lang ? fold(`${k}:m`, "messages sent", msgList(d.messages)) : "");
+    }
+    case "reply":
+      return err + ((t.info.replies || []).length ? `<div>${t.info.replies.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener">${t.info.replies.length > 1 ? `part ${i + 1}` : "open her reply"} in Discord ↗</a>`).join(" · ")}</div>` : "");
+  }
+  return "";
+}
+
+function subSteps(key, st) {
+  const steps = key === "satellite" ? ["route", "search", "summarize"] : key === "draw" ? ["prompt", "generate"] : null;
+  if (!steps || ["pending", "skipped"].includes(st.status)) return "";
+  const cur = steps.indexOf(st.data.step);
+  return `<span class="subs">${steps.map((x, j) => `<span class="${st.status === "running" && j === cur ? "cur" : j <= cur ? "on" : ""}">${x}</span>`).join("")}</span>`;
+}
+
+function logRows(lines, opts = {}) {
+  return lines.map((l) => `<div class="ll ${esc(l.level)}"><span class="at">${clock(l.at)}</span><span class="lv">${esc(l.level)}</span><span class="msg">${l.name && l.name !== "root" ? `<span class="src">${esc(l.name)}</span>` : ""}${esc(l.msg)}${opts.links && l.turn && turns.has(l.turn) ? `<a class="tl" data-turn="${l.turn}">→ ${esc(turns.get(l.turn).info.author)}'s message</a>` : ""}</span></div>`).join("");
+}
+
+function callsTable(t) {
+  const rows = [...(t.calls || [])];
+  const m = stg(t, "model");
+  if (m.t0 != null && m.status !== "skipped") rows.push({ stage: "model", what: "reply", model: m.data.model, at: m.t0, ms: m.t1 != null ? m.t1 - m.t0 : null, usage: m.data.usage, error: m.data.error && firstLine(m.data.error) });
+  if (!rows.length) return "";
+  rows.sort((a, b) => a.at - b.at);
+  const tin = rows.reduce((n, c) => n + (c.usage?.prompt_tokens || 0), 0), tout = rows.reduce((n, c) => n + (c.usage?.completion_tokens || 0), 0);
+  return `<div class="calls"><h3 class="sec">API calls <span class="muted">· ${rows.length} call${rows.length === 1 ? "" : "s"}${tin || tout ? ` · ${num(tin)} → ${num(tout)} tokens in all` : ""}</span></h3><div class="wrap"><table>
+    <tr><th>step</th><th>model / backend</th><th style="text-align:right">started</th><th style="text-align:right">took</th><th style="text-align:right">tokens in → out</th></tr>
+    ${rows.map((c, i) => `<tr class="${c.error ? "err" : ""}"><td><b>${esc(c.stage)}</b> ${esc(c.what)}${c.query ? ` <span class="muted">${esc(quote(c.query))} → ${c.results ?? "?"} results</span>` : ""}${c.error ? `<br><span style="color:var(--err)">${esc(c.error)}</span>` : ""}${c.reply ? fold(`${t.id}:call${i}`, "reply", `<pre>${esc(c.reply)}</pre>`) : ""}</td>
+      <td class="mono">${esc(c.model || "")}</td><td class="n">${ms(c.at)}</td><td class="n">${c.ms != null ? ms(c.ms) : "…"}</td><td class="n">${c.usage ? (c.usage.prompt_tokens != null ? `${num(c.usage.prompt_tokens)} → ${num(c.usage.completion_tokens)}` : esc(tokens(c.usage))) : ""}</td></tr>`).join("")}
+  </table></div></div>`;
+}
+
+function renderView() {
+  const t = turns.get(sel), v = $("view");
+  if (!t) return;
+  const total = Math.max(turnMs(t), 1);
+  const replyText = stg(t, "reply").data.text, drawn = stg(t, "draw").data.image, err = firstError(t);
+  const her = err ? `<div class="bubble her err"><span class="who">✕ ${esc(err[0])} failed</span>${esc(firstLine(err[1].data.error))}</div>` : "";
+  const herReply = replyText ? `<div class="bubble her"><span class="who">Scintilla${t.status === "running" ? " (sending…)" : ""}</span>${esc(replyText)}${drawn ? img(drawn, "") : ""}</div>`
+    : t.status === "running" ? `<div class="bubble her wait">${esc(outLine(t).replace(/<[^>]+>/g, ""))}</div>`
+    : !err ? `<div class="bubble her quiet">She didn't reply.</div>` : "";
+
+  const steps = STEPS.map(([key, label]) => {
+    const st = stg(t, key), quiet = ["pending", "skipped"].includes(st.status);
+    const end = st.t1 ?? (st.status === "running" ? total : null);
+    const bar = !quiet && st.t0 != null && end != null ? `<i style="left:${st.t0 / total * 100}%;width:${Math.max(end - st.t0, 0) / total * 100}%"></i>` : "";
+    const time = quiet ? "" : st.t1 != null && st.t0 != null ? (st.t1 > st.t0 ? ms(st.t1 - st.t0) : "<1 ms") : st.status === "running" ? "…" : "";
+    return `<div class="step ${st.status}">
+      <div class="rail"><span class="dot ${statusDot(st.status)}"></span></div>
+      <div class="body">
+        <div class="line"><span class="name">${label}</span><span class="sum">${esc(summary(t, key))}${subSteps(key, st)}</span><span class="wf" title="when it ran in this reply">${bar}</span><span class="ms">${time}</span></div>
+        ${quiet ? "" : `<div class="more">${more(t, key)}</div>`}
+      </div></div>`;
+  }).join("");
+
+  v.innerHTML = `
+    <div class="head">
+      <h2>${esc(t.info.author)}</h2>
+      <span class="muted">#${esc(t.info.channel)}${t.info.guild ? " · " + esc(t.info.guild) : ""} · ${clock(t.at)} · took <b class="live-ms" data-id="${t.id}">${ms(turnMs(t))}</b>${t.info.bot ? " · bot" : ""}</span>
+      ${t.info.url ? `<a href="${esc(t.info.url)}" target="_blank" rel="noopener">open in Discord ↗</a>` : ""}
+    </div>
+    <div class="convo">
+      <div class="bubble"><span class="who">${esc(t.info.author)}</span>${esc(t.info.content) || "<i class='muted'>(no text: an attachment or sticker)</i>"}</div>
+      ${her}${herReply}
+    </div>
+    <h3 class="sec">How she got there <span class="muted">· bars show when each step ran</span></h3>
+    <div class="steps">${steps}</div>
+    ${callsTable(t)}
+    ${(t.logs || []).length ? `<div class="turnlogs"><h3 class="sec">Log lines from this reply</h3><div class="loglist">${logRows(t.logs)}</div></div>` : ""}`;
+  // keep <details> the user opened or closed across re-renders
+  v.querySelectorAll("details[data-k]").forEach((el) => {
+    const k = el.dataset.k;
+    if (k in openState) el.open = openState[k];
+    el.addEventListener("toggle", () => { openState[k] = el.open; });
+  });
+}
+
+// --- log tab ---
+
+function visibleLogs() {
+  const q = $("lq").value.trim().toLowerCase();
+  return logs.filter((l) => (logFilter === "all" || l.level !== "INFO" && l.level !== "DEBUG") && (!beeOnly || !l.name || l.name === "root") && (!q || l.msg.toLowerCase().includes(q)));
+}
+const atBottom = () => window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 40;
+
+function renderLogs() {
+  const unseen = logs.slice(logSeen).filter((l) => l.level === "WARNING" || l.level === "ERROR" || l.level === "CRITICAL").length;
+  $("logbadge").textContent = tab === "log" || !unseen ? "" : unseen;
+  if (tab !== "log") return;
+  logSeen = logs.length;
+  const stick = atBottom(), rows = visibleLogs();
+  $("logcount").textContent = rows.length === logs.length ? `${logs.length} lines` : `${rows.length} of ${logs.length} lines`;
+  $("logrows").innerHTML = rows.length ? logRows(rows, { links: true }) : `<div class="empty">Nothing here.</div>`;
+  if (stick) window.scrollTo(0, document.documentElement.scrollHeight);
+  $("jump").style.display = atBottom() ? "none" : "block";
+}
+
+function renderState() {
+  $("s-ready").textContent = state.ready ? state.user || "ready" : "connecting";
+  $("s-model").textContent = (state.model || "?").replace(/^cliproxy\/mistral\//, "").replace(/:vision$/, "");
+  $("s-lat").textContent = state.latency_ms != null ? `${state.latency_ms} ms` : "–";
+  $("s-up").textContent = state.started_at ? dur(state.now - state.started_at) : "–";
+  $("s-nodes").textContent = state.msg_nodes ?? "–";
+  $("s-sat").textContent = state.satellite ? "on" : "off";
+  $("s-img").textContent = state.imagegen ? "on" : "off";
+}
+
+let raf = 0, dirty = {};
+function render(...what) { what.forEach((w) => dirty[w] = true); if (raf) return; raf = requestAnimationFrame(() => {
+  raf = 0; const d = dirty; dirty = {};
+  if (d.state) renderState();
+  if (d.list) renderTurns();
+  if (d.view) renderView();
+  if (d.logs) renderLogs();
+}); }
+
+function setFollow(on) { follow = on; $("follow").classList.toggle("on", on); if (on && turns.size) select(Math.max(...turns.keys())); }
+function select(id) { sel = id; render("list", "view"); }
+function setTab(name) {
+  tab = name; try { localStorage.setItem("bv-tab", name); } catch {}
+  $("replies").hidden = name !== "replies"; $("log").hidden = name !== "log";
+  $("tab-replies").classList.toggle("on", name === "replies"); $("tab-log").classList.toggle("on", name === "log");
+  $("follow").hidden = name !== "replies";
+  window.scrollTo(0, name === "log" ? document.documentElement.scrollHeight : 0);
+  render("list", "view", "logs");
+  if (name === "log") requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight));
+}
+
+function upsert(t) {
+  const isNew = !turns.has(t.id);
+  turns.set(t.id, t);
+  while (turns.size > 60) turns.delete(Math.min(...turns.keys()));
+  if (isNew && (follow || sel == null)) sel = t.id;
+  render("list", ...(t.id === sel ? ["view"] : []));
+}
+
+$("turns").addEventListener("click", (e) => { const el = e.target.closest(".turn"); if (!el) return; setFollow(false); select(+el.dataset.id); });
+$("follow").addEventListener("click", () => setFollow(!follow));
+$("tab-replies").addEventListener("click", () => setTab("replies"));
+$("tab-log").addEventListener("click", () => setTab("log"));
+$("logrows").addEventListener("click", (e) => { const a = e.target.closest("[data-turn]"); if (!a) return; setFollow(false); sel = +a.dataset.turn; setTab("replies"); });
+for (const [id, f] of [["lf-all", "all"], ["lf-warn", "warn"]]) $(id).addEventListener("click", () => { logFilter = f; $("lf-all").classList.toggle("on", f === "all"); $("lf-warn").classList.toggle("on", f === "warn"); render("logs"); });
+$("lf-bee").addEventListener("click", () => { beeOnly = !beeOnly; $("lf-bee").classList.toggle("on", beeOnly); render("logs"); });
+$("lq").addEventListener("input", () => render("logs"));
+$("jump").addEventListener("click", () => window.scrollTo(0, document.documentElement.scrollHeight));
+window.addEventListener("scroll", () => { if (tab === "log") $("jump").style.display = atBottom() ? "none" : "block"; }, { passive: true });
+
+// running replies: tick their elapsed time without re-rendering everything
+setInterval(() => {
+  document.querySelectorAll(".live-ms").forEach((el) => { const t = turns.get(+el.dataset.id); if (t?.status === "running") el.textContent = ms(turnMs(t)); });
+  if (state.started_at) $("s-up").textContent = dur(Date.now() / 1000 + clockSkew - state.started_at);
+}, 1000);
+
+function onState(s) { state = s; clockSkew = s.now - Date.now() / 1000; render("state"); }
+
+async function load() {
+  const d = await (await fetch("api/snapshot")).json();
+  onState(d.state); logs = d.logs; d.turns.forEach((t) => turns.set(t.id, t));
+  if (turns.size) sel = Math.max(...turns.keys());
+  let saved = null; try { saved = localStorage.getItem("bv-tab"); } catch {}
+  setTab(saved === "log" ? "log" : "replies");
+  logSeen = logs.length;
+}
+
+function connect() {
+  const es = new EventSource("events");
+  es.onopen = () => { $("conn").className = "dot ok"; };
+  es.onerror = () => { $("conn").className = "dot err"; };
+  es.addEventListener("state", (e) => onState(JSON.parse(e.data)));
+  es.addEventListener("turn", (e) => upsert(JSON.parse(e.data)));
+  es.addEventListener("log", (e) => {
+    const l = JSON.parse(e.data); logs.push(l); if (logs.length > 400) { logs = logs.slice(-400); logSeen = Math.max(0, logSeen - 1); }
+    const t = l.turn && turns.get(l.turn);
+    if (t) { (t.logs ||= []).push(l); render("list", ...(t.id === sel ? ["view"] : [])); }
+    render("logs");
+  });
+}
+const fitHeader = () => document.documentElement.style.setProperty("--hh", document.querySelector("header").offsetHeight + "px");
+new ResizeObserver(fitHeader).observe(document.querySelector("header")); fitHeader();
+load().catch(() => setTab("replies")).finally(connect);
+</script>
+</body>
+</html>

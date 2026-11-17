@@ -6,6 +6,7 @@
 
 !*.md
 !*.py
+!viewer.html
 
 !Dockerfile
 !config.yaml
@@ -14,5 +15,9 @@
 !searxng/settings.yml
 !docs/
 !docs/*.svg
+!sounds/
+!sounds/*.mp3
+!sounds/*.ogg
+!sounds/*.json
 !requirements.txt
 !.env.example

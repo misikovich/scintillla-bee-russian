@@ -117,6 +117,10 @@ def reply_language(messages: list[dict[str, Any]]) -> str:
     return language([clean_user_text(text_of(m["content"])) for m in messages if m["role"] == "user"])
 
 
+# Her reply in the history when she panicked (llmcord sends `panic_sound` then, no text), so the next reply knows
+PANIC_TEXT = {"ru": "БЗЗЗЗЗЗЗ *в ужасе визжит и улетает под потолок*", "en": "BZZZZZZZ *screams in horror and flies up to the ceiling*"}
+
+
 # An image without a caption, so the "Name: text" line isn't empty
 IMAGE_ONLY = {"ru": "(картинка)", "en": "(a picture)"}
 

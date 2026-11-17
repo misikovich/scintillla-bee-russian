@@ -19,6 +19,8 @@ import yaml
 import bee
 import imagegen
 import satellite
+import viewer
+import voice
 
 load_dotenv()
 
@@ -181,6 +183,12 @@ async def on_message(new_msg: discord.Message) -> None:
             return
         bot_reply_times[new_msg.channel.id] = recent_bot_replies + [now_ts]
 
+    viewer.begin(
+        author=new_msg.author.display_name, author_id=new_msg.author.id, bot=new_msg.author.bot, content=new_msg.content,
+        channel=getattr(new_msg.channel, "name", None) or "DM", guild=getattr(new_msg.guild, "name", None), url=new_msg.jump_url, model=curr_model,
+    )
+    viewer.stage("chain", "running")
+
     provider_slash_model = curr_model
     provider, model = provider_slash_model.removesuffix(":vision").split("/", 1)
 
@@ -311,21 +319,27 @@ async def on_message(new_msg: discord.Message) -> None:
 
             curr_msg = curr_node.parent_msg
 
+    viewer.stage("chain", "done", messages=messages[::-1], warnings=sorted(user_warnings))
     logging.info(f"Message received (user ID: {new_msg.author.id}, attachments: {len(new_msg.attachments)}, conversation length: {len(messages)}):\n{new_msg.content}")
 
-    drawing = None
+    drawing = panic_sound = None
     if bee_mode:
         # Dynamic context (satellite.py): a second model may search the web first and give her a note for this reply
         notes, draw_request = [], None
         if satellite_cfg := config.get("satellite"):
             async with new_msg.channel.typing():
                 lang = bee.reply_language(messages)
-                notes, draw_request = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
+                notes, draw_request, panic = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
+                # Threatened with a slipper/jar/net: she sends `panic_sound` instead of a text reply
+                if panic and (panic_sound := config.get("panic_sound")) and not os.path.isfile(panic_sound):
+                    logging.warning(f"panic_sound {panic_sound!r} not found, answering with text")
+                    panic_sound = None
                 # Asked to draw (imagegen.py): the picture goes with her reply, a note tells her about it
-                if draw_request and (imagegen_cfg := config.get("imagegen")):
+                elif draw_request and (imagegen_cfg := config.get("imagegen")):
                     drawing = await imagegen.draw(draw_request, messages, lang, new_msg.author.id, imagegen_cfg, config["providers"], httpx_client)
                     notes.append(drawing["note"])
-        messages, _ = bee.prepare(messages, notes=notes)
+        messages, lang = bee.prepare(messages, notes=notes)
+        viewer.stage("prompt", "done", lang=lang, examples=2 * len(bee.PROMPTS[lang]["examples"]), notes=notes)
 
     if (system_prompt := config.get("system_prompt")) and not bee_mode:
         now = datetime.now().astimezone()
@@ -337,6 +351,7 @@ async def on_message(new_msg: discord.Message) -> None:
     # Generate and send response message(s) (can be multiple if response is long)
     curr_content = None
     finish_reason = None
+    usage = None
     model_text = None
     response_msgs = []
     response_contents = []
@@ -360,9 +375,32 @@ async def on_message(new_msg: discord.Message) -> None:
         msg_nodes[response_msg.id] = MsgNode(parent_msg=new_msg)
         await msg_nodes[response_msg.id].lock.acquire()
 
+    if panic_sound:
+        # No model call: a panicked buzz as a voice message (voice.py); the history keeps a text stand-in so she knows she panicked
+        model_text = bee.PANIC_TEXT[lang]
+        viewer.stage("reply", "running", text=f"{model_text} [{panic_sound}]")
+        try:
+            async with new_msg.channel.typing():
+                if (wait := config.get("min_reply_delay", 0) - (asyncio.get_running_loop().time() - received_at)) > 0:
+                    await asyncio.sleep(wait)
+                try:
+                    response_msg = await voice.reply(new_msg, panic_sound)
+                except discord.HTTPException as e:  # e.g. no "Send Voice Messages" permission there: a plain audio file
+                    logging.warning(f"Voice message failed ({e}), sending the sound as a file")
+                    response_msg = await new_msg.reply(file=discord.File(panic_sound))
+            response_msgs.append(response_msg)
+            msg_nodes[response_msg.id] = MsgNode(text=model_text, parent_msg=new_msg)
+        except Exception as e:
+            logging.exception("Error while sending the panic sound")
+            viewer.fail(e)
+        viewer.end(replies=[msg.jump_url for msg in response_msgs])
+        return
+
+    viewer.stage("model", "running", model=model, params=extra_body, messages=messages[::-1])
     try:
         async with new_msg.channel.typing():
             async for chunk in await openai_client.chat.completions.create(**openai_kwargs):
+                usage = viewer.usage(chunk) or usage  # Mistral sends it with the last chunk
                 if finish_reason != None:
                     break
 
@@ -406,19 +444,24 @@ async def on_message(new_msg: discord.Message) -> None:
                         last_task_time = datetime.now().timestamp()
 
             if use_plain_responses:
+                viewer.stage("model", "done", raw="".join(response_contents), finish_reason=finish_reason, usage=usage)
                 # Loop guard and no "Сцинтилла:" label (see bee.py)
                 if bee_mode and (model_text := bee.guard("".join(response_contents))):
                     response_contents = [model_text[i : i + max_message_length] for i in range(0, len(model_text), max_message_length)]
 
                 # Don't answer instantly: wait until min_reply_delay seconds after the message came in ("typing..." shows meanwhile)
+                viewer.stage("reply", "running", text=model_text or "".join(response_contents))
                 if (wait := config.get("min_reply_delay", 0) - (asyncio.get_running_loop().time() - received_at)) > 0:
                     await asyncio.sleep(wait)
 
                 for content in response_contents:
                     await reply_helper(content=content, suppress_embeds=True)
 
-    except Exception:
+    except Exception as e:
         logging.exception("Error while generating response")
+        viewer.fail(e)
+
+    viewer.end(replies=[msg.jump_url for msg in response_msgs])
 
     for response_msg in response_msgs:
         msg_nodes[response_msg.id].text = model_text or "".join(response_contents)
@@ -435,6 +478,10 @@ async def on_message(new_msg: discord.Message) -> None:
 
 
 async def main() -> None:
+    await viewer.serve(config.get("viewer"), lambda: dict(
+        model=curr_model, ready=discord_bot.is_ready(), user=str(discord_bot.user), latency_ms=round(discord_bot.latency * 1000) if discord_bot.is_ready() else None,
+        guilds=len(discord_bot.guilds), msg_nodes=len(msg_nodes), satellite=bool(config.get("satellite")), imagegen=bool(config.get("imagegen")),
+    ))
     await discord_bot.start(config["bot_token"])
 
 

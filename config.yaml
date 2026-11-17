@@ -87,12 +87,32 @@ imagegen:
     reasoning_effort: low
     max_tokens: 4000
   writer_timeout: 30
-  model: openrouter/recraft/recraft-v4.1-flash-v2:free
+  model: openrouter/recraft/recraft-v4.1-flash-v2
+  # tried first for every picture (free, 50 requests/day); when it fails (429 once those are used up) `model` draws,
+  # silently. Delete the line to always use `model`
+  free_model: openrouter/recraft/recraft-v4.1-flash-v2:free
+  free_timeout: 20
   image_timeout: 60
   # used when the request names no style
   style: a clean, colorful digital illustration.
   max_input_images: 2
-  per_user_per_hour: 10
+  per_user_per_hour: 30
+
+# Threatened with a slipper, swatter, jar, net or bug spray (the satellite's router decides), she sends this sound as a
+# voice message instead of a text reply. Ogg/Opus with a .json next to it: `python voice.py sounds/panic.mp3` makes both.
+# Needs `satellite:`. Delete the line to turn it off (she answers with text then). Bee models only
+panic_sound: sounds/panic.ogg
+
+# Viewer (viewer.py): a live page of each reply (chain, satellite, drawing, prompt, model, reply) and the log. Read at
+# startup. host: 127.0.0.1 unless set (docker-compose sets VIEWER_HOST=0.0.0.0 and publishes the port on the host's
+# 127.0.0.1 only; `tailscale serve` puts it on the tailnet). Delete the block to turn it off
+viewer:
+  port: 8770
+  host_env: VIEWER_HOST
+  # Every finished reply (all steps, data, timings, API calls with tokens, its log lines) to <dir>/turns-YYYY-MM-DD.jsonl,
+  # every log line to log-YYYY-MM-DD.jsonl, pictures to images/; the page reloads from it after a restart. Never
+  # deleted (chats included). `python viewer.py stats data 7` sums it up. Delete the line to stop recording
+  record_dir: data
 
 # Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:

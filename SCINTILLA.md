@@ -27,6 +27,14 @@ uv venv && uv pip install -r requirements.txt && .venv/bin/python llmcord.py
 
 Talk to her by @mentioning her or calling her by name; reply to her messages to continue a conversation.
 
+## Viewer
+
+A live page of what she's doing (each message with her reply and the steps in between: the satellite, drawing, her prompt; and a log tab): `viewer.py`,
+`viewer:` in `config.yaml`. Every reply (steps, timings, API calls with tokens, log lines) and every log line is also
+saved to `data/` (`record_dir`), so the page survives restarts and you can analyze it: `python viewer.py stats data 7`.
+Docker publishes it on `127.0.0.1:8770`; on the tailnet:
+`tailscale serve --bg --https=8445 http://127.0.0.1:8770` (https://xps-node.tarpon-rohu.ts.net:8445).
+
 ## The model
 
 DeepSeek v4.1 Flash buzzes on its own and answers for real: "бззбз сам заткнись, бззз. жужжу как хочу, бжжж",

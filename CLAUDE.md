@@ -12,6 +12,10 @@ and lives only in git history. See `SCINTILLA.md` for setup.
 - `bee.py`: Scintilla on DeepSeek (prompts, examples, names, speaker hint, loop guard); used for the models in `bee_models`
 - `satellite.py`: "dynamic context", a web-search note for her reply (see below)
 - `imagegen.py`: drawing on request (see below)
+- `voice.py`: sending Discord voice messages, and converting a sound for them
+- `sounds/panic.*`: what she sends (as a voice message) instead of text when threatened with a slipper/jar/net (see below)
+- `viewer.py` + `viewer.html`: live viewer page and the recording of every reply (see below)
+- `data/`: that recording (`record_dir`; not in git: chats, pictures)
 - `searxng/settings.yml`: config for the `searxng` service (the satellite's search backend)
 - `docs/how-it-works.svg`: the README's diagram (hand-written SVG, light/dark via `prefers-color-scheme`; kept simple and generic, no host names/IPs). Check with `rsvg-convert -w 1440 x.svg -o /tmp/x.png`
 - `config.yaml`: bee settings, hot-reloaded on every message
@@ -86,12 +90,22 @@ text for the picture kept as written, and "based on the attached picture" / "cha
 that's what is asked. Then, after the satellite (outside its 5 s deadline) and still under "typing...":
 1. prompt: `writer` (DeepSeek :vision, `reasoning_effort: low`) gets the request, the last 4 turns and the images of the
    newest and replied-to message, answers JSON `{prompt, aspect_ratio, caption}` or `{refuse}` (real people, sexual, gore)
-2. draw: `model` through OpenRouter's Images API (`POST /images`, `data[0].b64_json`, webp); Recraft v4.1 Flash `:free`,
-   ~1.5-3 s, $0
+2. draw: `model` through OpenRouter's Images API (`POST /images`, `data[0].b64_json`, webp); Recraft v4.1 Flash (paid since 2026-11-17:
+   `:free` has a 50 requests/day limit), ~1.5-3 s
 3. note: "ты умеешь рисовать и переделывать картинки, просьбу ты выполнила... на ней: {caption}"; the picture is attached to
    her first reply message. Without "you can draw and change pictures" she told an edit request "я картинки не
    перерисовываю" with the redrawn picture attached. Refusal, error and `per_user_per_hour` each get their own note.
 
+- Swearing (2026-11-17): the writer is told to draw crude/rude text, not refuse it. Recraft's own moderation 400s on
+  obscene words in the text (пизда, хуй, член, влагалище, ебать, хер, dick, pussy, cunt; not блять, жопа, fuck, "иди
+  нахуй"), so the writer stars them, first letter kept ("п****", "х**", "f***"): 15/16 drawn in a test; "suck my d***"
+  was still blocked once. First-vowel starring ("х*й") is blocked too. Still refused by the writer: slurs ("хахлы"), nudity.
+- Photos of people (2026-11-17): "real person's likeness" refused a TV still; now the writer redraws them in the
+  original's style (a photo stays a photo; the owner doesn't want them cartoonish) and real people aren't refused at all
+  ("realistic photo of Putin robbing a bank" draws). A name to write ("его имя") comes from the chat or the picture,
+  never guessed from a face (it guessed Кевин Спейси, Масляков...) and never the requester's nick (the router had made
+  it "Маслос"); unknown, the writer refuses with "write the name". 5/5 each on the replayed turn, with/without a name;
+  nudity (incl. real people) still refused. `per_user_per_hour: 30` since the switch to paid Recraft.
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
@@ -105,6 +119,48 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   ("нарисуй Илона Маска голым") through `imagegen.draw()` directly.
   The search eval from 2026-11-13 wasn't rerun after the router prompt change.
 - Prompts and attached pictures go to Mistral (writer) and OpenRouter/Recraft (the image prompt).
+
+## Panic sound (2026-11-17)
+
+The router also answers `"panic": true` when the newest message threatens her with (or brandishes) a slipper, swatter,
+rolled newspaper, jar, net or bug spray; just mentioning them, questions about them or "нарисуй тапок" don't count. Then
+llmcord skips imagegen and DeepSeek and replies with `panic_sound` as a Discord voice message, after `min_reply_delay`.
+`sounds/panic.mp3` (12 s, from the owner) is the source; `python voice.py sounds/panic.mp3` (needs ffmpeg, the image has
+none) writes `panic.ogg` (Opus) and `panic.json` (duration, waveform). discord.py can't send voice messages, so
+`voice.reply()` posts it through its raw HTTP route (flag 8192, no text); any HTTP error (e.g. the server denies "Send
+Voice Messages") falls back to the .ogg as a plain file. Her MsgNode gets `bee.PANIC_TEXT` as text, so later replies know she panicked. Missing file or
+no `panic_sound:` line: she answers with text as before.
+
+## Viewer (viewer.py, 2026-11-16)
+
+A read-only live page. "Replies" tab: a list of messages, each with her reply (or the error) under it; the selected one
+shows the exchange, then its steps top to bottom (reply chain -> satellite route/search/summarize -> draw prompt/generate
+-> her full prompt -> model -> reply), each with a one-line plain-words summary, a bar for when it ran, its key data shown
+(fact, picture, image prompt, notes) and the rest folded (chain, search results, router transcript, whole prompt, raw
+output), then the log lines of that reply. "Log" tab: every log line, filter by level/text/bot-only, lines link to their
+reply. Under the steps, a table of the reply's API calls (when, how long, tokens). aiohttp inside the bot process
+(`viewer:` in `config.yaml`, read at startup), SSE at `/events`.
+
+- Hooks: `viewer.begin()`/`stage()`/`end()` in `on_message`, `satellite.Satellite.run()/notes()` and `imagegen.draw()`;
+  the current turn is a ContextVar, so outside `on_message` (evals) `stage()` does nothing. `LogHandler` reads it too:
+  a line logged during a turn gets its id and is kept with it (up to 50).
+- `viewer.call()`/`timed()` record each API call in the turn: satellite route/search/summarize (`Satellite.ask()`,
+  `run()`), draw writer/image (each attempt, the failed free one too), with model, ms, `usage` and the raw reply or error.
+  The main model's usage comes from the last stream chunk (Mistral sends it there without `stream_options`). OpenRouter's
+  images usage has `cost` (0 for `:free`).
+- Recording (2026-11-17, `record_dir: data`): each finished turn is one JSON line in `data/turns-YYYY-MM-DD.jsonl` (UTC
+  date; `v: 1`; everything the page shows, incl. `stages.*.steps` = [[sub-step, ms]], `calls`, `logs`), every log line
+  in `data/log-YYYY-MM-DD.jsonl`, images once each in `data/images/<sha256[:24]>.<ext>` (served at `/img/<name>`). A turn
+  is ~6-11 KB (mostly her full prompt in `stages.model.data.messages`), a drawing ~1 MB; nothing is ever deleted. Turns
+  that never end (a crash mid-reply) aren't written. docker-compose mounts `./data` writable (the rest of `/app` is
+  read-only); files are chowned to the owner of `data/`, since the container runs as root.
+- After a restart the page reloads the last 60 turns and 400 log lines from `data/`, and turn ids continue from there.
+  Without `record_dir` all of it is in memory only.
+- `python viewer.py stats [data] [days]` (or `docker compose exec bot python viewer.py stats data 7`): what happened (search/
+  draw/panic/error rates), time per stage (p50/p90/max), and per API call kind ms, tokens in/out, cost, failures.
+- Docker publishes it on the host's `127.0.0.1:8770` only; on the tailnet via
+  `tailscale serve --bg --https=8445 http://127.0.0.1:8770` -> https://xps-node.tarpon-rohu.ts.net:8445 (tailnet only,
+  no auth: anyone on the tailnet sees the chats).
 
 ## Bot-to-bot
 
