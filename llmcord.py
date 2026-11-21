@@ -13,10 +13,10 @@ from discord.app_commands import Choice
 from discord.ext import commands
 from dotenv import load_dotenv
 import httpx
-from openai import AsyncOpenAI
 import yaml
 
 import bee
+import fallback
 import imagegen
 import satellite
 import viewer
@@ -214,15 +214,14 @@ async def on_message(new_msg: discord.Message) -> None:
 
     provider_config = config["providers"][provider]
 
-    base_url = provider_config["base_url"]
-    api_key = provider_config.get("api_key", "sk-no-key-required")
-    openai_client = AsyncOpenAI(base_url=base_url, api_key=api_key)
-
-    model_parameters = config["models"].get(provider_slash_model, None)
+    model_parameters = dict(config["models"].get(provider_slash_model) or {})
+    # Fallback API (fallback.py): the same request to another model when this one fails
+    fallback_model, fallback_params = model_parameters.pop("fallback", None), model_parameters.pop("fallback_params", None)
 
     extra_headers = provider_config.get("extra_headers")
     extra_query = provider_config.get("extra_query")
-    extra_body = (provider_config.get("extra_body") or {}) | (model_parameters or {}) or None
+    extra_body = (provider_config.get("extra_body") or {}) | model_parameters or None
+    model_tries = fallback.attempts(provider_slash_model, extra_body, fallback_model, fallback_params, config["providers"])
 
     accept_images = any(x in provider_slash_model.lower() for x in VISION_MODEL_TAGS)
 
@@ -367,7 +366,7 @@ async def on_message(new_msg: discord.Message) -> None:
     response_msgs = []
     response_contents = []
 
-    openai_kwargs = dict(model=model, messages=messages[::-1], stream=True, extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body)
+    openai_kwargs = dict(messages=messages[::-1], stream=True, extra_headers=extra_headers, extra_query=extra_query)
 
     if use_plain_responses := config.get("use_plain_responses", False):
         # Plain message content (not a Components V2 TextDisplay) so every Discord client shows it; its limit is 2000
@@ -410,7 +409,7 @@ async def on_message(new_msg: discord.Message) -> None:
     viewer.stage("model", "running", model=model, params=extra_body, messages=messages[::-1])
     try:
         async with new_msg.channel.typing():
-            async for chunk in await openai_client.chat.completions.create(**openai_kwargs):
+            async for chunk in fallback.stream(model_tries, **openai_kwargs):
                 usage = viewer.usage(chunk) or usage  # Mistral sends it with the last chunk
                 if finish_reason != None:
                     break

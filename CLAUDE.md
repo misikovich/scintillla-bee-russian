@@ -9,6 +9,7 @@ and lives only in git history. See `SCINTILLA.md` for setup.
 ## Layout
 
 - `llmcord.py`: the whole bot (upstream code plus small patches; keep the diff small so upstream merges stay easy)
+- `fallback.py`: the fallback API (OpenRouter) when Mistral fails
 - `bee.py`: Scintilla on DeepSeek (prompts, examples, names, speaker hint, loop guard); used for the models in `bee_models`
 - `satellite.py`: "dynamic context", a web-search note for her reply (see below)
 - `imagegen.py`: drawing on request (see below)
@@ -57,7 +58,13 @@ in the Computers repo. The MiniCPM server itself (`~/minicpm5`) still runs, for 
   line to use whole chains again. `msg_nodes` is in memory only, so a restart clears that part anyway.
 - Testing without Discord: `fake_discord.py` in the Computers repo (`bee-eval/`) runs the real `on_message` on fake messages.
 - Mistral answers 422 on unknown fields: no `dry_multiplier`, `min_p` or `chat_template_kwargs` in its model params.
-- If node-mbp's proxy or Mistral is down she doesn't answer (no fallback).
+- Fallback (2026-11-21, `fallback.py`): Mistral cut the account off on 2026-11-20 (402 billing_no_api_budget_configured),
+  so she ran on OpenRouter for a day. Now Mistral is first again and OpenRouter (`OPENROUTER_API_KEY`, the same
+  DeepSeek v4.1 Flash) is the fallback for her model (`fallback:`/`fallback_params:` in its `models:` entry), the
+  satellite (`fallback:` in `satellite:`) and the draw writer (`writer_fallback:`). Any error falls back (connection, 4xx,
+  5xx); the first model has no retries and a 5 s connect timeout. Her stream falls back only before its first chunk.
+  OpenRouter needs `reasoning: {enabled: false}` (it reasons by default and eats max_tokens); `reasoning_effort: low`
+  works on both. Tested with a dead port and a bad key: ~0.3-0.9 s to an OpenRouter answer. Logged as "... falling back to".
 
 ## Satellite (dynamic context, 2026-11-13)
 

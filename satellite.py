@@ -22,8 +22,8 @@ import re
 from typing import Any
 
 import httpx
-from openai import AsyncOpenAI
 
+import fallback
 import viewer
 
 ROUTER_PROMPT = """You decide whether a Discord chat bot needs a web search before replying to the NEWEST message. Today is {date}.
@@ -107,10 +107,7 @@ def transcript(messages: list[dict[str, Any]], turns: int = 4) -> str:
 
 class Satellite:
     def __init__(self, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient):
-        provider, self.model = cfg["model"].split("/", 1)
-        provider_cfg = providers[provider]
-        self.client = AsyncOpenAI(base_url=provider_cfg["base_url"], api_key=provider_cfg.get("api_key", "sk-no-key-required"))
-        self.params = cfg.get("params") or {}
+        self.tries = fallback.attempts(cfg["model"], cfg.get("params"), cfg.get("fallback"), cfg.get("fallback_params"), providers)
         self.backend = cfg.get("search", "searxng")
         self.search_key = cfg.get("search_api_key")
         if self.backend in ("tavily", "exa") and not self.search_key:
@@ -122,17 +119,12 @@ class Satellite:
         self.http = http
 
     async def ask(self, system: str, user: str, max_tokens: int, what: str = "ask") -> str:
-        with viewer.timed("satellite", what, model=self.model) as call:
-            resp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[dict(role="system", content=system), dict(role="user", content=user)],
-                max_tokens=max_tokens,
-                temperature=0,
-                extra_body=self.params or None,
-            )
-            call["usage"] = viewer.usage(resp)
-            call["reply"] = reply = text_of(resp.choices[0].message.content).strip()
-        return reply
+        return await fallback.complete(
+            self.tries, "satellite", what, lambda resp: text_of(resp.choices[0].message.content).strip(),
+            messages=[dict(role="system", content=system), dict(role="user", content=user)],
+            max_tokens=max_tokens,
+            temperature=0,
+        )
 
     async def route(self, messages: list[dict[str, Any]], today: str) -> tuple[str | None, str | None, bool]:
         """(search query, draw request, panic); query and request are None when not needed."""

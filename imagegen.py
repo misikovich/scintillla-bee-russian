@@ -23,8 +23,8 @@ import time
 from typing import Any
 
 import httpx
-from openai import AsyncOpenAI
 
+import fallback
 import viewer
 
 from satellite import text_of, transcript
@@ -95,10 +95,9 @@ def allowed(user_id: int, per_hour: int) -> bool:
 
 class Painter:
     def __init__(self, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient):
-        provider, self.writer_model = cfg["writer"].removesuffix(":vision").split("/", 1)
-        writer_provider = providers[provider]
-        self.writer = AsyncOpenAI(base_url=writer_provider["base_url"], api_key=writer_provider.get("api_key", "sk-no-key-required"))
         self.writer_params = cfg.get("writer_params") or {}
+        params = {k: v for k, v in self.writer_params.items() if k != "max_tokens"}
+        self.writers = fallback.attempts(cfg["writer"], params, cfg.get("writer_fallback"), cfg.get("writer_fallback_params"), providers)
         self.image_models = [self.image_endpoint(cfg[key], providers) for key in ("free_model", "model") if cfg.get(key)]
         self.free_timeout = cfg.get("free_timeout", 20)
         self.style = cfg.get("style") or DEFAULT_STYLE
@@ -109,15 +108,11 @@ class Painter:
         system = PROMPT_WRITER.format(style=self.style, ratios=", ".join(RATIOS), language=LANGUAGES[lang])
         text = f"Today is {datetime.now().astimezone():%Y-%m-%d}.\n\nChat:\n{transcript(messages)}\n\nRequest: {request}"
         images = images_of(messages, self.max_images)
-        with viewer.timed("draw", "writer", model=self.writer_model) as call:
-            resp = await self.writer.chat.completions.create(
-                model=self.writer_model,
-                messages=[dict(role="system", content=system), dict(role="user", content=[dict(type="text", text=text)] + images if images else text)],
-                max_tokens=self.writer_params.get("max_tokens", 4000),
-                extra_body={k: v for k, v in self.writer_params.items() if k != "max_tokens"} or None,
-            )
-            call["usage"] = viewer.usage(resp)
-            call["reply"] = reply = text_of(resp.choices[0].message.content).strip()
+        reply = await fallback.complete(
+            self.writers, "draw", "writer", lambda resp: text_of(resp.choices[0].message.content).strip(),
+            messages=[dict(role="system", content=system), dict(role="user", content=[dict(type="text", text=text)] + images if images else text)],
+            max_tokens=self.writer_params.get("max_tokens", 4000),
+        )
         try:
             # The first object only: now and then it writes a second one after it
             return json.JSONDecoder().raw_decode(reply[reply.index("{"):])[0]

@@ -44,35 +44,42 @@ permissions:
     blocked_ids: []
 
 providers:
-  # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); unused since 2026-11-20
+  # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); DeepSeek through Mistral's API
   cliproxy:
     base_url: http://10.10.0.50:8317/v1
     api_key_env: CLIPROXY_API_KEY
 
-  # OpenRouter: her chat model, the satellite and image generation
+  # OpenRouter: image generation, and the fallback when Mistral fails
   openrouter:
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
 
 models:
   # The first model is the default (read at startup, so restart after reordering); /model switches, admins only.
-  # Default since 2026-11-20: DeepSeek v4.1 Flash (same model as before) through OpenRouter, direct (not CLIProxyAPI).
-  # Was Mistral's hosted copy via CLIProxyAPI from 2026-11-11 until Mistral cut the account off (402, no API budget).
-  # OpenRouter reasons by default, which would eat max_tokens, so reasoning is off. If OpenRouter is down she doesn't
-  # answer. ":vision" tells llmcord the model takes images (stripped before the API call)
-  openrouter/deepseek/deepseek-v4.1-flash-1017:vision:
+  # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI, ~0.5 s (default since 2026-11-11; on OpenRouter only
+  # 2026-11-20..21, while Mistral had cut the account off). Mistral rejects fields it doesn't know (422 extra_forbidden).
+  # ":vision" tells llmcord the model takes images (stripped before the API call).
+  # fallback (fallback.py): when the call fails before the first chunk (node-mbp's proxy or Mistral down, 402...), the
+  # same request goes to `fallback` with `fallback_params` merged over these. OpenRouter reasons by default, which would
+  # eat max_tokens, so reasoning is off there
+  cliproxy/mistral/deepseek-v4-1-flash-1017:vision:
     temperature: 0.7
     max_tokens: 150
-    reasoning:
-      enabled: false
+    fallback: openrouter/deepseek/deepseek-v4.1-flash-1017
+    fallback_params:
+      reasoning:
+        enabled: false
 
 # Satellite ("dynamic context", satellite.py): before she answers, this model decides whether the newest message needs a
 # web search; if so it summarizes the results into a note for her reply. Within `timeout` seconds or she answers without
 # it. Delete the block to turn it off. Bee models only.
 # search: tavily (TAVILY_API_KEY), exa (EXA_API_KEY) or searxng (the searxng service in docker-compose.yaml, no key)
 satellite:
-  model: openrouter/deepseek/deepseek-v4.1-flash-1017
-  params:
+  model: cliproxy/mistral/deepseek-v4-1-flash-1017
+  params: {}
+  # when `model` fails (fallback.py); fallback_params are merged over params
+  fallback: openrouter/deepseek/deepseek-v4.1-flash-1017
+  fallback_params:
     reasoning:
       enabled: false
   search: tavily
@@ -87,10 +94,13 @@ satellite:
 # draws it (OpenRouter's Images API) and the picture goes with her reply. Text-to-image only: a change to a picture is a
 # redraw from its description. Needs `satellite:`. Delete the block to turn it off. Bee models only.
 imagegen:
-  writer: openrouter/deepseek/deepseek-v4.1-flash-1017:vision
+  writer: cliproxy/mistral/deepseek-v4-1-flash-1017:vision
   writer_params:
     reasoning_effort: low
     max_tokens: 4000
+  # when `writer` fails (fallback.py); writer_fallback_params are merged over writer_params (reasoning_effort works there too)
+  writer_fallback: openrouter/deepseek/deepseek-v4.1-flash-1017:vision
+  writer_fallback_params: {}
   writer_timeout: 30
   model: openrouter/recraft/recraft-v4.1-flash-v2
   # tried first for every picture (free, 50 requests/day); when it fails (429 once those are used up) `model` draws,
@@ -121,7 +131,7 @@ viewer:
 
 # Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:
-  - openrouter/deepseek/deepseek-v4.1-flash-1017:vision
+  - cliproxy/mistral/deepseek-v4-1-flash-1017:vision
 
 # Unused: bee_models get their system prompt from bee.py
 system_prompt:

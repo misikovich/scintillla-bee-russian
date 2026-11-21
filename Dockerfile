@@ -8,7 +8,7 @@ COPY requirements.txt ./
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY llmcord.py bee.py satellite.py imagegen.py viewer.py voice.py viewer.html config.yaml ./
+COPY llmcord.py bee.py fallback.py satellite.py imagegen.py viewer.py voice.py viewer.html config.yaml ./
 COPY sounds/ ./sounds/
 
 CMD ["python", "llmcord.py"]
