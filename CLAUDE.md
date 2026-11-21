@@ -139,9 +139,11 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   subject ("пчол сделай картинку марго писает в самовар" drew a bee named Margo; 240 of 606 recorded "пчол" requests had a
   bee in them, some rightly: "как ты срешь"). `satellite.unaddressed()` strips it from user messages in `transcript()`, which
   the router, summarizer and draw writer all read; "пчол нарисуй себя" still draws her.
-- Fake image links (2026-11-21): with a drawing attached she sometimes added "![бззз](https://oaidalleapi...)" (a made-up
-  DALL-E URL, shown as text in Discord), and copied it once it was in the chain. `bee.MD_IMAGE_RE` strips markdown images
-  from her reply (`guard()`) and from her earlier turns in `prepare()`.
+- Fake image links (2026-11-21): with a drawing attached she twice (in ~770 drawing turns) wrote her own
+  "![бззз](https://oaidalleapiprodscus...)" (ChatGPT's DALL-E link format, from the model's training), shown as text in
+  Discord. Once it was in the chain she copied it: 4 of the 6 were copies, and replaying those turns gave 4-10/10. Replaying
+  the 2 first ones gave 0/100 with or without her earlier pictures in the chain. `bee.MD_IMAGE_RE` strips markdown images from
+  her reply (`guard()`) and from her earlier turns in `prepare()`; with the chain cleaned, all 6 replayed turns gave 0/48.
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
