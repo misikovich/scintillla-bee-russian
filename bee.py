@@ -9,8 +9,11 @@ What the prompt is built on (bee-eval/ in the Computers repo, 2026-11-11):
 MiniCPM5-2B (a two-stage style: plain reply, buzzing added by code) was removed on 2026-11-12.
 """
 
+import io
 import re
 from typing import Any
+
+from PIL import Image
 
 from satellite import text_of  # with images llmcord sends a message as a list of parts: one text part, then image_url parts
 
@@ -84,6 +87,27 @@ CHUNK_RUN_RE = re.compile(r"(\S{1,12}[\s,.!~-]*?)\1{4,}")
 
 
 URL_RE = re.compile(r"https?://\S+")
+
+
+def still_image(data: bytes, content_type: str, max_side: int = 1568, max_bytes: int = 4 << 20) -> tuple[bytes, str]:
+    """An image the model takes: an animated GIF becomes its middle frame (Mistral 400s on animated GIFs, and a 16 MB one took
+    it 23-33 s to refuse, 2026-11-21), and a big one is scaled down to JPEG. Anything Pillow can't read is passed as is."""
+    try:
+        img = Image.open(io.BytesIO(data))
+        animated = getattr(img, "is_animated", False)
+        if not animated and len(data) <= max_bytes and max(img.size) <= max_side:
+            return data, content_type
+        if animated:
+            img.seek(img.n_frames // 2)
+        img = img.convert("RGBA")
+        frame = Image.new("RGB", img.size, "white")
+        frame.paste(img, mask=img)
+        frame.thumbnail((max_side, max_side))
+        out = io.BytesIO()
+        frame.save(out, "JPEG", quality=90)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        return data, content_type
 
 
 def language(texts: list[str]) -> str:

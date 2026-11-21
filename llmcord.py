@@ -272,10 +272,14 @@ async def on_message(new_msg: discord.Message) -> None:
                     + [resp.text for att, resp in zip(good_attachments, attachment_responses) if att.content_type.startswith("text")]
                 )
 
-                curr_node.images = [
-                    dict(type="image_url", image_url=dict(url=f"data:{att.content_type};base64,{b64encode(resp.content).decode('utf-8')}"))
+                stills = await asyncio.gather(*[
+                    asyncio.to_thread(bee.still_image, resp.content, att.content_type)
                     for att, resp in zip(good_attachments, attachment_responses)
                     if att.content_type.startswith("image")
+                ])
+                curr_node.images = [
+                    dict(type="image_url", image_url=dict(url=f"data:{content_type};base64,{b64encode(data).decode('utf-8')}"))
+                    for data, content_type in stills
                 ]
 
                 if curr_node.role == "user" and (curr_node.text or curr_node.images) and config.get("prefix_user_ids", True):

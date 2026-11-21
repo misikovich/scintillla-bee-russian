@@ -52,6 +52,9 @@ in the Computers repo. The MiniCPM server itself (`~/minicpm5`) still runs, for 
   call; the satellite's `model:` has no `:vision`, it only reads text); `max_images: 2`. `bee.prepare()` keeps the image
   parts and writes the text part as "Name: text", or "Name: (картинка)" without a caption. Tested PNG/JPEG/WebP/GIF; she
   reads text in images and remembers an earlier image in the reply chain (images are sent again with every reply).
+  Animated GIFs (2026-11-21): Mistral 400s on them ("Image is an animated GIF"), and a 16 MB one took it 23-33 s to refuse,
+  twice (writer, then her reply), so the reply came after ~70 s via OpenRouter and the drawing timed out. `bee.still_image()`
+  (Pillow) sends the middle frame as JPEG instead, and scales down images over 1568 px or 4 MB; other images pass as is.
   Stickers aren't sent: a sticker-only message reaches her as "(прислали стикер «name», ты его не видишь)", and with
   `max_images: 0` an image-only one as "(прислали картинку, ты её не видишь)"; empty, she answered "<".
 - `history_since` in `config.yaml` (ISO time): older messages are left out of every reply chain. A history reset; delete the
