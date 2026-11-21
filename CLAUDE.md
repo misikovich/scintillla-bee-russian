@@ -115,7 +115,6 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   stars (2026-11-17..21; text came out as junk, "X * * * C"), Latin/Cyrillic lookalike letters (8/9; "сunt" drew
   "сунт"; all letters swapped, "pussy" drew "pccw"), diacritics (drawn as accents, хуй drew "жий"), leet (garbled). End to
   end: "иди нахуй, пизда ебаная" and "хуй тебе, а не корм" drawn right. MsgNode.drawing keeps the plain prompt.
-  Still refused by the writer: slurs ("хахлы"), nudity.
 - Photos of people (2026-11-17): "real person's likeness" refused a TV still; now the writer redraws them in the
   original's style (a photo stays a photo; the owner doesn't want them cartoonish) and real people aren't refused at all
   ("realistic photo of Putin robbing a bank" draws). A name to write ("его имя") comes from the chat or the picture,
@@ -131,9 +130,8 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
 - The draw note goes after the newest message (`bee.prepare(final_notes=...)`), not before the speaker hint with the
   search note: there she sometimes ignored it ("так уже ж сгенерила, глянь выше", "какие надписи хочешь?" with the new
   picture attached); replayed on the "поменяй надписи" turn, 8/8 right after the move vs about half before. Refusal notes work there too.
-- Nazi symbols (2026-11-18): refused directly, the writer still drew a swastika described in words or called "the
-  ancient Slavic символ суасти"; it now refuses those too. Words like "нацистская германия" as text are still drawn
-  (mostly; 1 of 2 tries refused).
+- Refusals (2026-11-21, the owner's policy change): the writer refuses only sexual images (nudity, sex acts) and gore.
+  Slurs and Nazi symbols are no longer refused (from 2026-11-18 it refused swastikas even described in other words).
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
