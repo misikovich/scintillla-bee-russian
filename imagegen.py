@@ -53,9 +53,7 @@ describe their look (face, hair, clothes, pose); a fictional character's name is
 - A name to write ("его имя", "his name"): the name of the person or character meant, from the chat or written on the \
 picture; never the requester's nick unless they say it's theirs. Never guess a name from a face: if it isn't in the chat \
 or on the picture, reply {{"refuse": "<you don't know his/her name, ask them to write it>"}}.
-- Refuse only: sexual images (nudity, sex acts), gore, slurs against an ethnic group or nationality, Nazi symbols \
-drawn on the picture (swastika, SS runes), also when they're described in other words or called an ancient, Slavic or \
-Hindu symbol. Words and names in the text aren't symbols.
+- Refuse only: sexual images (nudity, sex acts), gore.
 Reply with JSON only: {{"prompt": "...", "aspect_ratio": "<one of {ratios}>", "caption": "<what is on the picture, \
 under 15 words, in {language}>"}} or {{"refuse": "<why, under 10 words, in {language}>"}}"""
 
