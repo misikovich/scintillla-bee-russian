@@ -87,12 +87,24 @@ def text_of(content: Any) -> str:
     return "".join(part.get("text") or "" for part in content or [] if isinstance(part, dict) and part.get("type") == "text")
 
 
+# "пчол" (bee slang for "bro") and "пчела," are how people address her. Left at the start of a message, the router and
+# the draw writer took it as the subject: "пчол сделай картинку марго писает в самовар" drew a bee named Margo.
+ADDRESS_RE = re.compile(r"^\s*(?:пч[оё]л(?:ик|я)?\b|пч[её]л(?:к)?а\s*[,!])[\s,!.:]*", re.IGNORECASE)
+
+
+def unaddressed(text: str) -> str:
+    """The text without a leading "пчол"/"пчела," (see ADDRESS_RE), unless that's all there is."""
+    return ADDRESS_RE.sub("", text, count=1) or text
+
+
 def transcript(messages: list[dict[str, Any]], turns: int = 4) -> str:
     """The last few turns, oldest first, as "Name: text" lines; messages are llmcord's (newest first). Attached
     pictures show as "[picture attached]", her drawings (llmcord's "drawing" key, see imagegen.py) as "[drew: prompt]"."""
     lines = []
     for msg in messages[:turns][::-1]:
         text = text_of(msg["content"]).strip()
+        if msg["role"] == "user":
+            text = unaddressed(text)
         if isinstance(msg["content"], list) and any(part.get("type") == "image_url" for part in msg["content"]):
             text = f"{text} [picture attached]".strip()
         if msg.get("drawing"):

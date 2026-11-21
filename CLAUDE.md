@@ -132,6 +132,10 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   picture attached); replayed on the "поменяй надписи" turn, 8/8 right after the move vs about half before. Refusal notes work there too.
 - Refusals (2026-11-21, the owner's policy change): the writer refuses only sexual images (nudity, sex acts) and gore.
   Slurs and Nazi symbols are no longer refused (from 2026-11-18 it refused swastikas even described in other words).
+- "пчол" (2026-11-21): a leading "пчол"/"пчёл"/"пчела," is how people address her, and the router took it as the
+  subject ("пчол сделай картинку марго писает в самовар" drew a bee named Margo; 240 of 606 recorded "пчол" requests had a
+  bee in them, some rightly: "как ты срешь"). `satellite.unaddressed()` strips it from user messages in `transcript()`, which
+  the router, summarizer and draw writer all read; "пчол нарисуй себя" still draws her.
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
