@@ -44,9 +44,7 @@ eyes, odd nose or mouth, spiky hair, skin color, clothes): not a normal human or
 plush, costume, mask or 3D render. Hyperrealistic, uncanny and funny. Don't use the words cartoon, illustration, \
 outlines or cel-shaded for them.
 - Allowed: swearing, crude jokes and rude meme text, fictional characters, cartoon parodies, dark humor. Draw these, don't refuse.
-- Obscene words in the picture's text (мат, words for genitals or sex, fuck, dick, cunt...): keep the first letter and \
-replace the rest with *, one per letter ("п****", "х**", "иди н****", "f***"). Mild words (жопа, дурак, damn, shit) as written. \
-The image model blocks the uncensored ones.
+- Obscene words in the picture's text (мат, fuck, dick, cunt...): write them exactly as asked, uncensored, no stars.
 - A photo of a person (a movie or TV still, a celebrity, anyone) to change: don't refuse. It's a redraw from your \
 description, not an edit of the photo: keep the original's style (a photo stays a photo, same lighting and framing) and \
 describe their look (face, hair, clothes, pose); a fictional character's name is fine.
@@ -73,6 +71,21 @@ NOTES = {
 }
 
 LANGUAGES = {"ru": "Russian", "en": "English"}
+# Recraft's moderation 400s on some obscene words in the prompt (хуй, пизда, cunt, sometimes pussy...). A zero-width space
+# between their letters gets them through and they're still drawn right (9/9 on 2026-11-21; stars came out garbled, Latin
+# lookalike letters mostly right but "сunt" became "сунт"). Done in code: the writer can't type invisible characters.
+# False positives are harmless (the space is invisible), so the roots are broad
+OBSCENE_RE = re.compile(
+    r"\b\w*(?:ху[йеёяюи]|пи[зс]д|залуп|муди|мудак|влагалищ|член|хер|(?<![^\W\d_аоуыиъ])[её]б[аоуилёнш]|"
+    r"dick|puss(?:y|ies)|cunt|cock|penis|vagin|fuck|whore|slut)\w*", re.I)
+ZWSP = "\u200b"
+
+
+def unblock(prompt: str) -> str:
+    """The prompt with a zero-width space between the letters of every obscene word (see OBSCENE_RE)."""
+    return OBSCENE_RE.sub(lambda m: ZWSP.join(m[0]), prompt)
+
+
 RATIOS = ("1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16")
 DEFAULT_STYLE = "a hyperrealistic photo: real camera, real light, detailed skin, hair, fur and fabric textures, shallow depth of field."
 
@@ -131,7 +144,7 @@ class Painter:
                     resp = await self.http.post(
                         f"{base}/images",
                         headers={"Authorization": f"Bearer {key}"},
-                        json=dict(model=model, prompt=prompt, n=1, aspect_ratio=aspect_ratio if aspect_ratio in RATIOS else "1:1"),
+                        json=dict(model=model, prompt=unblock(prompt), n=1, aspect_ratio=aspect_ratio if aspect_ratio in RATIOS else "1:1"),
                         timeout=60 if last else self.free_timeout,
                     )
                     if resp.is_error:
