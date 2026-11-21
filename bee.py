@@ -128,10 +128,14 @@ def clean_user_text(text: str) -> str:
 # Users' messages come as "Name: text"; now and then she starts her own reply with her name the same way
 SPEAKER_RE = re.compile(r"^\s*\**\s*(?:Сцинтилла|Scintilla)\s*(?::\s*\**|\**\s*:)\s*", re.I)
 
+# With a drawing attached she sometimes adds a markdown image of her own, a made-up link ("![бззз](https://oaidalleapi...)",
+# 4 times by 2026-11-21, copied from her earlier reply once it's in the chain); Discord shows it as text
+MD_IMAGE_RE = re.compile(r"!\[[^\]\n]*\](?:\([^)\s]*\)?)?")
+
 
 def guard(text: str) -> str:
-    """Cut down loops and drop a "Сцинтилла:" label at the start of her reply."""
-    text = SPEAKER_RE.sub("", text)
+    """Cut down loops, drop a "Сцинтилла:" label at the start of her reply and markdown images."""
+    text = MD_IMAGE_RE.sub("", SPEAKER_RE.sub("", text))
     text = CHAR_RUN_RE.sub(lambda m: m.group(1) * 8, text)
     return CHUNK_RUN_RE.sub(lambda m: m.group(1) * 3, text).strip()
 
@@ -169,7 +173,7 @@ def prepare(
     for msg in messages:
         images = [part for part in msg["content"] if part.get("type") == "image_url"] if isinstance(msg["content"], list) else []
         text = text_of(msg["content"])
-        text = text.strip() if msg["role"] == "assistant" else clean_user_text(text)
+        text = MD_IMAGE_RE.sub("", text).strip() if msg["role"] == "assistant" else clean_user_text(text)
         if not text:
             if not images:
                 continue
