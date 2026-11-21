@@ -126,12 +126,15 @@ IMAGE_ONLY = {"ru": "(картинка)", "en": "(a picture)"}
 
 
 def prepare(
-    messages: list[dict[str, Any]], prompts: dict | None = None, speaker_hint: bool = True, notes: list[str] = ()
+    messages: list[dict[str, Any]], prompts: dict | None = None, speaker_hint: bool = True, notes: list[str] = (),
+    final_notes: list[str] = (),
 ) -> tuple[list[dict[str, Any]], str]:
     """messages: llmcord's conversation, newest first, without a system prompt.
     A user message may have a "name" (the author's display name): it goes in front of the text as "Name: text", so she
     can tell people apart. prompts overrides PROMPTS, speaker_hint=False drops SPEAKER_HINTS (for testing).
     notes: system notes for this reply only (satellite.py: facts from a web search), put right before the newest message.
+    final_notes: the same, but after the newest message, the last thing she reads (imagegen.py: "you drew it"; before the
+    message she sometimes ignored it: "так уже ж сгенерила, глянь выше", "какие надписи хочешь?" with the picture attached).
 
     Returns her full prompt (newest first, like llmcord keeps it) and the reply language.
     """
@@ -158,6 +161,8 @@ def prepare(
     if notes and chat and chat[0]["role"] == "user":
         at = 2 if len(chat) > 1 and chat[1]["role"] == "system" else 1
         chat[at:at] = [dict(role="system", content=note) for note in notes]
+    if final_notes and chat and chat[0]["role"] == "user":
+        chat[0:0] = [dict(role="system", content=note) for note in final_notes]
 
     examples = []
     for user, reply in prompt["examples"]:

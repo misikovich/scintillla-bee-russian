@@ -79,6 +79,10 @@ The note goes in as a system message right before the speaker hint, for this rep
   for the US midterms were too mixed and the summary said NONE.
 - GLM on Mistral: `reasoning_effort: none` (else it spends max_tokens thinking); content comes as a list of
   thinking/text parts, `satellite.text_of()` keeps the text (llmcord's stream loop uses it too).
+- A search that finds nothing (no results or NONE) gives her a "you searched, found nothing, don't guess" note (2026-11-18:
+  without it she made up "мёд катает" for a company and told "поищи в инете" to google it themselves). The summarizer
+  reads the last 4 turns like the router (with 2, "поищи в инете" lost the question) and picks the best match among
+  several things with one name (Beneke Fabricators from Breaking Bad).
 - SearXNG's wikipedia/wikidata engines are off: they need `general.contact_url` in `searxng/settings.yml`.
 - Messages that reach the router also go to Mistral (as before); search queries go to Tavily/Exa, or to Google/Brave
   etc. via SearXNG. The eval above used SearXNG.
@@ -112,6 +116,12 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   "not a toy, figurine, plush, costume or 3D render": without that line Homer and SpongeBob came out as figurines), like
   the owner's reference (a real-life Bart). An asked-for style still wins: "a cartoon of...", anime, logos stay drawn.
   Tested on 12 requests with `imagegen.Painter` directly.
+- The draw note goes after the newest message (`bee.prepare(final_notes=...)`), not before the speaker hint with the
+  search note: there she sometimes ignored it ("так уже ж сгенерила, глянь выше", "какие надписи хочешь?" with the new
+  picture attached); replayed on the "поменяй надписи" turn, 8/8 right after the move vs about half before. Refusal notes work there too.
+- Nazi symbols (2026-11-18): refused directly, the writer still drew a swastika described in words or called "the
+  ancient Slavic символ суасти"; it now refuses those too. Words like "нацистская германия" as text are still drawn
+  (mostly; 1 of 2 tries refused).
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"
@@ -167,6 +177,12 @@ reply. Under the steps, a table of the reply's API calls (when, how long, tokens
 - Docker publishes it on the host's `127.0.0.1:8770` only; on the tailnet via
   `tailscale serve --bg --https=8445 http://127.0.0.1:8770` -> https://xps-node.tarpon-rohu.ts.net:8445 (tailnet only,
   no auth: anyone on the tailnet sees the chats).
+
+## Channels she can't write in
+
+She ignores messages in channels where she lacks View Channel, Read Message History or Send Messages (in threads:
+Send Messages in Threads): before 2026-11-18 "typing..." raised 403 Missing Access there (6 times in a day) and the turn
+never ended. Logged as "No permission to reply in #channel".
 
 ## Bot-to-bot
 

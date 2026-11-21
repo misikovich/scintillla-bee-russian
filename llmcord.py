@@ -47,6 +47,12 @@ def is_called(msg: discord.Message) -> bool:
     return discord_bot.user in msg.mentions or bool(NAME_TRIGGER.search(msg.content))
 
 
+def can_reply(channel: discord.abc.GuildChannel | discord.Thread) -> bool:
+    perms = channel.permissions_for(channel.guild.me)
+    send = perms.send_messages_in_threads if isinstance(channel, discord.Thread) else perms.send_messages
+    return perms.view_channel and perms.read_message_history and send
+
+
 def resolve_env(node: Any) -> Any:
     if isinstance(node, dict):
         return {key.removesuffix("_env"): os.environ.get(value) if key.endswith("_env") else resolve_env(value) for key, value in node.items()}
@@ -182,6 +188,11 @@ async def on_message(new_msg: discord.Message) -> None:
         if len(recent_bot_replies) >= config.get("max_bot_replies_per_minute", 5):
             return
         bot_reply_times[new_msg.channel.id] = recent_bot_replies + [now_ts]
+
+    # A channel she can read but not write in: Discord answers 403 to "typing..." and the reply, so stay quiet
+    if not is_dm and not can_reply(new_msg.channel):
+        logging.info(f"No permission to reply in #{getattr(new_msg.channel, 'name', new_msg.channel.id)} ({new_msg.channel.id}), ignoring")
+        return
 
     viewer.begin(
         author=new_msg.author.display_name, author_id=new_msg.author.id, bot=new_msg.author.bot, content=new_msg.content,
@@ -325,7 +336,7 @@ async def on_message(new_msg: discord.Message) -> None:
     drawing = panic_sound = None
     if bee_mode:
         # Dynamic context (satellite.py): a second model may search the web first and give her a note for this reply
-        notes, draw_request = [], None
+        notes, final_notes, draw_request = [], [], None
         if satellite_cfg := config.get("satellite"):
             async with new_msg.channel.typing():
                 lang = bee.reply_language(messages)
@@ -337,9 +348,9 @@ async def on_message(new_msg: discord.Message) -> None:
                 # Asked to draw (imagegen.py): the picture goes with her reply, a note tells her about it
                 elif draw_request and (imagegen_cfg := config.get("imagegen")):
                     drawing = await imagegen.draw(draw_request, messages, lang, new_msg.author.id, imagegen_cfg, config["providers"], httpx_client)
-                    notes.append(drawing["note"])
-        messages, lang = bee.prepare(messages, notes=notes)
-        viewer.stage("prompt", "done", lang=lang, examples=2 * len(bee.PROMPTS[lang]["examples"]), notes=notes)
+                    final_notes.append(drawing["note"])
+        messages, lang = bee.prepare(messages, notes=notes, final_notes=final_notes)
+        viewer.stage("prompt", "done", lang=lang, examples=2 * len(bee.PROMPTS[lang]["examples"]), notes=notes + final_notes)
 
     if (system_prompt := config.get("system_prompt")) and not bee_mode:
         now = datetime.now().astimezone()

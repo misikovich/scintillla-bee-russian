@@ -43,13 +43,6 @@ humanoid ones get human skin. Keep their cartoon proportions and features exagge
 eyes, odd nose or mouth, spiky hair, skin color, clothes): not a normal human or animal, and not a toy, figurine, \
 plush, costume, mask or 3D render. Hyperrealistic, uncanny and funny. Don't use the words cartoon, illustration, \
 outlines or cel-shaded for them.
-- Text on the picture: put it in double quotes, exactly as asked, in its original language and spelling.
-- Style: what the request asks for; if nothing, {style}
-- Cartoon, anime, game or meme characters (Homer, SpongeBob, Pepe, trollface...) and drawn things, unless a cartoon or \
-drawing is asked for: show them as if they existed in real life, a real photo of them: real skin with pores and \
-wrinkles, wet eyes, real hair, fabric and fur, but keep their cartoon proportions and features exaggerated (head shape, \
-huge eyes, odd nose or mouth, spiky hair, skin color), not a normal human, a costume or a mask: hyperrealistic, \
-slightly uncanny and funny. Don't use the words cartoon, illustration, outlines or cel-shaded for them.
 - Allowed: swearing, crude jokes and rude meme text, fictional characters, cartoon parodies, dark humor. Draw these, don't refuse.
 - Obscene words in the picture's text (мат, words for genitals or sex, fuck, dick, cunt...): keep the first letter and \
 replace the rest with *, one per letter ("п****", "х**", "иди н****", "f***"). Mild words (жопа, дурак, damn, shit) as written. \
@@ -60,19 +53,21 @@ describe their look (face, hair, clothes, pose); a fictional character's name is
 - A name to write ("его имя", "his name"): the name of the person or character meant, from the chat or written on the \
 picture; never the requester's nick unless they say it's theirs. Never guess a name from a face: if it isn't in the chat \
 or on the picture, reply {{"refuse": "<you don't know his/her name, ask them to write it>"}}.
-- Refuse only: sexual images (nudity, sex acts), gore, slurs against an ethnic group or nationality.
+- Refuse only: sexual images (nudity, sex acts), gore, slurs against an ethnic group or nationality, Nazi symbols \
+drawn on the picture (swastika, SS runes), also when they're described in other words or called an ancient, Slavic or \
+Hindu symbol. Words and names in the text aren't symbols.
 Reply with JSON only: {{"prompt": "...", "aspect_ratio": "<one of {ratios}>", "caption": "<what is on the picture, \
 under 15 words, in {language}>"}} or {{"refuse": "<why, under 10 words, in {language}>"}}"""
 
 NOTES = {
     "ru": dict(
-        drawn="Ты умеешь рисовать и переделывать картинки. Просьбу ты выполнила: картинка готова и прикреплена к твоему ответу. На ней: {caption}. Ответь как обычно, по-пчелиному, можешь коротко сказать о ней пару слов, промпт не пересказывай.",
+        drawn="Ты умеешь рисовать и переделывать картинки. Просьбу ты выполнила: картинка готова и прикреплена к твоему ответу. На ней: {caption}. Ответь как обычно, по-пчелиному, можешь коротко сказать о ней пару слов, промпт не пересказывай. Не переспрашивай и не говори, что рисовала раньше: это новая картинка на это сообщение.",
         refused="Тебя попросили нарисовать картинку, но ты не стала: {reason}. Скажи это по-пчелиному.",
         failed="Тебя попросили нарисовать картинку, но не получилось (кисточка сломалась). Скажи это по-пчелиному, можно попробовать позже.",
         limited="Тебя попросили нарисовать картинку, но ты уже много рисовала и устала. Скажи это по-пчелиному, пусть попросят попозже.",
     ),
     "en": dict(
-        drawn="You can draw and change pictures. You did what was asked: the picture is ready and attached to your reply. It shows: {caption}. Answer as usual, buzzing, maybe say a word or two about it, don't recite the prompt.",
+        drawn="You can draw and change pictures. You did what was asked: the picture is ready and attached to your reply. It shows: {caption}. Answer as usual, buzzing, maybe say a word or two about it, don't recite the prompt. Don't ask what to do and don't say you drew it before: this is a new picture for this message.",
         refused="You were asked to draw a picture but you didn't: {reason}. Say so, buzzing.",
         failed="You were asked to draw a picture but it didn't work out (your brush broke). Say so, buzzing; they can try later.",
         limited="You were asked to draw a picture but you've drawn a lot already and you're tired. Say so, buzzing; they can ask later.",
