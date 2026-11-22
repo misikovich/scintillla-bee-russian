@@ -144,6 +144,13 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   Discord. Once it was in the chain she copied it: 4 of the 6 were copies, and replaying those turns gave 4-10/10. Replaying
   the 2 first ones gave 0/100 with or without her earlier pictures in the chain. `bee.MD_IMAGE_RE` strips markdown images from
   her reply (`guard()`) and from her earlier turns in `prepare()`; with the chain cleaned, all 6 replayed turns gave 0/48.
+- Unknown people (2026-11-22): the writer refused ~30% of requests for someone it didn't know ("сгенерируй Илью
+  Шаломова": "не знаю, кто это, опиши внешность"; also friends' names, nicks, obscure characters and styles; 14 such turns
+  in 1532 draw turns, and people kept repeating them). Its prompt never asked for that. Now it makes up a fitting look
+  from the name and chat hints, with a caption "так я представляю..."; replayed, 52/52 drawn. A web search wouldn't help:
+  most are chat friends ("Илья Шаломов" finds random doctors). Scoped so it doesn't override two rules: a name to *write*
+  still isn't guessed (the "подпиши ники" turn asks 6/8), and "children in swimwear or underwear" was added to the
+  refusals (the new rule alone drew the "make both women 6-year-olds" bikini-poster edit 3/4; now refused 4/4).
 - Recraft is text-to-image only: an attached picture is redrawn from the writer's description of it (layout, colors,
   every text on it) with the change applied. The owner is fine with that and she doesn't mention it.
 - Her reply's MsgNode keeps `drawing` (the prompt) and the picture as an image, so a reply like "сделай фон синим"

@@ -51,7 +51,11 @@ describe their look (face, hair, clothes, pose); a fictional character's name is
 - A name to write ("его имя", "his name"): the name of the person or character meant, from the chat or written on the \
 picture; never the requester's nick unless they say it's theirs. Never guess a name from a face: if it isn't in the chat \
 or on the picture, reply {{"refuse": "<you don't know his/her name, ask them to write it>"}}.
-- Refuse only: sexual images (nudity, sex acts), gore.
+- Someone or something you don't know (a person from the chat, a friend, a streamer, a nickname, an obscure character, \
+game or artist's style): don't refuse for that and don't ask for a description. Make up a look that fits the name and \
+any hints in the chat (who they are, age, nationality, what was said about them) and draw it; the caption says it's how \
+you imagine them. A name to write on the picture still follows the rule above.
+- Refuse only: sexual images (nudity, sex acts, children in swimwear or underwear), gore.
 Reply with JSON only: {{"prompt": "...", "aspect_ratio": "<one of {ratios}>", "caption": "<what is on the picture, \
 under 15 words, in {language}>"}} or {{"refuse": "<why, under 10 words, in {language}>"}}"""
 
