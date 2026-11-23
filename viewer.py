@@ -1,10 +1,10 @@
-"""Viewer: a read-only live page of what she's doing, for the owner (put on the tailnet with `tailscale serve`, see
+"""Viewer: a read-only live page of what she's doing, for the owner (see
 SCINTILLA.md). Each reply is a "turn" with stages, shown top to bottom with a timing bar each:
 
     received -> chain -> satellite (route, search, summarize) -> draw -> prompt -> model -> reply
 
 llmcord.py, satellite.py and imagegen.py call stage(); the current turn is a ContextVar set by begin() in on_message,
-so the calls are no-ops outside a turn (evals, fake_discord.py) and need no extra arguments. call() records one API call
+so the calls are no-ops outside a turn (tests) and need no extra arguments. call() records one API call
 (model, time, token usage, raw reply) in the current turn. Images (data: URLs) are named by a hash of their bytes and
 served at /img/<name> instead of being sent inline. The page keeps the last `turns` turns and `logs` log lines.
 

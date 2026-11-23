@@ -1,7 +1,7 @@
 # scintilla bee 🐝
 
 [llmcord](https://github.com/jakobdylanc/llmcord) (remote `upstream`) running Scintilla on DeepSeek v4.1 Flash
-(Mistral's API through CLIProxyAPI on node-mbp). Until 2026-11-11 she ran on
+(Mistral's API through CLIProxyAPI). Until 2026-11-11 she ran on
 [BeeLLM-2.0-12M-Mood](https://huggingface.co/schizophyllume/BeeLLM) via llama.cpp, with a Gemma 3 4B translator for
 Russian; both were removed on 2026-11-13 (see git history).
 
@@ -10,7 +10,7 @@ Russian; both were removed on 2026-11-13 (see git history).
 1. [Developer Portal](https://discord.com/developers/applications) → **New Application** → name it `scintilla bee`.
 2. **Bot** tab: upload the avatar, **Reset Token** (copy it), enable **Message Content Intent**.
 3. **General Information**: copy the **Application ID**.
-4. `cp .env.example .env` and fill in both values, plus `CLIPROXY_API_KEY`.
+4. `cp .env.example .env` and fill in both values, plus `CLIPROXY_BASE_URL` and `CLIPROXY_API_KEY`.
 5. Start the bot, then open the invite URL it logs on startup (`docker compose logs bot`).
 
 ## Run
@@ -32,14 +32,13 @@ Talk to her by @mentioning her or calling her by name; reply to her messages to 
 A live page of what she's doing (each message with her reply and the steps in between: the satellite, drawing, her prompt; and a log tab): `viewer.py`,
 `viewer:` in `config.yaml`. Every reply (steps, timings, API calls with tokens, log lines) and every log line is also
 saved to `data/` (`record_dir`), so the page survives restarts and you can analyze it: `python viewer.py stats data 7`.
-Docker publishes it on `127.0.0.1:8770`; on the tailnet:
-`tailscale serve --bg --https=8445 http://127.0.0.1:8770` (https://xps-node.tarpon-rohu.ts.net:8445).
+Docker publishes it on `127.0.0.1:8770` only. It has no auth and shows the chats, so keep it private.
 
 ## The model
 
 DeepSeek v4.1 Flash buzzes on its own and answers for real: "бззбз сам заткнись, бззз. жужжу как хочу, бжжж",
-"бзз, Париж, бззз. там мёд вкусный". It's in `bee_models` in `config.yaml`, code in `bee.py`. If node-mbp's proxy or
-Mistral is down she doesn't answer.
+"бзз, Париж, бззз. там мёд вкусный". It's in `bee_models` in `config.yaml`, code in `bee.py`. If the proxy and Mistral are
+down, she falls back to OpenRouter (`fallback.py`).
 
 ## Satellite (web search)
 

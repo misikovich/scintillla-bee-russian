@@ -9,7 +9,7 @@ services:
       - ./:/app:ro
       # The viewer's recording (record_dir in config.yaml), the only writable path
       - ./data:/app/data
-    # The viewer (viewer.py), on the host's loopback only; `tailscale serve --https=8445 http://127.0.0.1:8770` puts it on the tailnet
+    # The viewer (viewer.py), on the host's loopback only
     environment:
       VIEWER_HOST: 0.0.0.0
     ports:

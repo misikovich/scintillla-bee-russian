@@ -1,6 +1,6 @@
 """Satellite ("Dynamic Context"): a second model that reads the newest message before Scintilla answers and, when it needs
 facts she can't know (news, results, releases, "latest"/"current" things, niche specifics), searches the web and hands
-her a short note. She never calls tools herself: her prompt stays as tuned in bee-eval, she just gets one more system
+her a short note. She never calls tools herself: her prompt stays as tuned, she just gets one more system
 note next to the speaker hint (bee.prepare(notes=...)).
 
 Steps, all within `timeout` seconds (any failure or timeout: she answers without a note):
@@ -107,7 +107,7 @@ def text_of(content: Any) -> str:
 
 
 # "пчол" (bee slang for "bro") and "пчела," are how people address her. Left at the start of a message, the router and
-# the draw writer took it as the subject: "пчол сделай картинку марго писает в самовар" drew a bee named Margo.
+# the draw writer took it as the subject: "пчол нарисуй кота" drew a bee with a cat.
 ADDRESS_RE = re.compile(r"^\s*(?:пч[оё]л(?:ик|я)?\b|пч[её]л(?:к)?а\s*[,!])[\s,!.:]*", re.IGNORECASE)
 
 
@@ -237,7 +237,7 @@ class Satellite:
         return None if not reply or reply.upper().startswith("NONE") else reply
 
     async def run(self, messages: list[dict[str, Any]], lang: str) -> dict[str, Any]:
-        """Everything the satellite did, for logs and evals: query, results, fact, note (None when nothing to add)."""
+        """Everything the satellite did, for logs and tests: query, results, fact, note (None when nothing to add)."""
         today = datetime.now().astimezone().strftime("%Y-%m-%d")
         trace: dict[str, Any] = dict(query=None, draw=None, panic=False, results=[], fact=None, note=None)
         viewer.stage("satellite", "running", step="route", backend=self.backend, transcript=transcript(messages))

@@ -46,9 +46,9 @@ permissions:
     blocked_ids: []
 
 providers:
-  # CLIProxyAPI on node-mbp (cliproxyapi.md in the Computers repo); DeepSeek through Mistral's API
+  # CLIProxyAPI (its address in .env); DeepSeek through Mistral's API
   cliproxy:
-    base_url: http://10.10.0.50:8317/v1
+    base_url_env: CLIPROXY_BASE_URL
     api_key_env: CLIPROXY_API_KEY
 
   # OpenRouter: image generation, and the fallback when Mistral fails
@@ -61,7 +61,7 @@ models:
   # DeepSeek v4.1 Flash hosted by Mistral, through CLIProxyAPI, ~0.5 s (default since 2026-11-11; on OpenRouter only
   # 2026-11-20..21, while Mistral had cut the account off). Mistral rejects fields it doesn't know (422 extra_forbidden).
   # ":vision" tells llmcord the model takes images (stripped before the API call).
-  # fallback (fallback.py): when the call fails before the first chunk (node-mbp's proxy or Mistral down, 402...), the
+  # fallback (fallback.py): when the call fails before the first chunk (the proxy or Mistral down, 402...), the
   # same request goes to `fallback` with `fallback_params` merged over these. OpenRouter reasons by default, which would
   # eat max_tokens, so reasoning is off there
   cliproxy/mistral/deepseek-v4-1-flash-1017:vision:
@@ -125,7 +125,7 @@ panic_sound: sounds/panic.ogg
 
 # Viewer (viewer.py): a live page of each reply (chain, satellite, drawing, prompt, model, reply) and the log. Read at
 # startup. host: 127.0.0.1 unless set (docker-compose sets VIEWER_HOST=0.0.0.0 and publishes the port on the host's
-# 127.0.0.1 only; `tailscale serve` puts it on the tailnet). Delete the block to turn it off
+# 127.0.0.1 only). Delete the block to turn it off
 viewer:
   port: 8770
   host_env: VIEWER_HOST

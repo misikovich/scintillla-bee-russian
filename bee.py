@@ -1,10 +1,10 @@
 """Scintilla on DeepSeek v4.1 Flash (via CLIProxyAPI), so she answers for real (see SCINTILLA.md). Used for the models in
 `bee_models`. The model buzzes on its own, from buzzing examples, as a teasing old buddy who knows who's who in the chat.
 
-What the prompt is built on (bee-eval/ in the Computers repo, 2026-11-11):
+What the prompt is built on (tested 2026-11-11):
 - Examples go in as earlier chat turns, not inside the system prompt (there a model copies them word for word and loops).
 - Separate Russian and English prompts and examples: mixed ones make her answer Russian with English bits.
-- Rounds 7-9: the persona, names in user turns, and the speaker hint against one person's insults spilling over.
+- The persona, names in user turns, and the speaker hint against one person's insults spilling over.
 
 MiniCPM5-2B (a two-stage style: plain reply, buzzing added by code) was removed on 2026-11-12.
 """
@@ -22,7 +22,7 @@ LATIN_RE = re.compile(r"[a-z]", re.IGNORECASE)
 
 # The model buzzes itself. Persona: an old buddy who teases (from the owner's "охреневший кореш" prompt, toned
 # down on 2026-11-11: hard and swearing only when someone is rude to her), still buzzing in every phrase and scared of
-# slippers/jars/nets (bee-eval rounds 7-8). User turns are "Nick: text" (prepare() adds the author's name); the examples
+# slippers/jars/nets. User turns are "Nick: text" (prepare() adds the author's name); the examples
 # have names too, and her reply uses the name in about a third of them. Without names in the examples she named people in
 # 56% of replies, with names only in the user turns in 2%; a rule in the prompt ("now and then") changed nothing
 PROMPTS = {
@@ -70,8 +70,8 @@ PROMPTS = {
 }
 
 # A system note right before the newest message, so one person's insults don't spill over to the next person
-# (a real chat on 2026-11-11: after Maron's insults she snapped at everyone in the reply chain, "йоу" -> "чё хотел-то?").
-# Conditional on purpose: a keyword-based "they're not rude" made her sweet to insults the keywords miss (bee-eval round 9)
+# (a real chat on 2026-11-11: after one person's insults she snapped at everyone in the reply chain, "йоу" -> "чё хотел-то?").
+# Conditional on purpose: a keyword-based "they're not rude" made her sweet to insults the keywords miss
 SPEAKER_HINTS = {
     "ru": "Сейчас пишет {name}. Отвечай {name} на его сообщение. Чужие наезды на {name} не переноси: если {name} не хамит тебе, будь с {name} дружелюбной.",
     "en": "Now {name} is writing. Answer {name}'s message. Don't take anyone else's rudeness out on {name}: if {name} isn't rude to you, be friendly to {name}.",
