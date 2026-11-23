@@ -140,8 +140,6 @@ async def on_ready() -> None:
 
 @discord_bot.event
 async def on_message(new_msg: discord.Message) -> None:
-    global last_task_time
-
     received_at = asyncio.get_running_loop().time()
 
     is_dm = new_msg.channel.type == discord.ChannelType.private
@@ -198,6 +196,18 @@ async def on_message(new_msg: discord.Message) -> None:
         author=new_msg.author.display_name, author_id=new_msg.author.id, bot=new_msg.author.bot, content=new_msg.content,
         channel=getattr(new_msg.channel, "name", None) or "DM", guild=getattr(new_msg.guild, "name", None), url=new_msg.jump_url, model=curr_model,
     )
+    try:
+        await reply_to(new_msg, config, received_at)
+    except Exception as e:
+        logging.exception("Error while handling a message")
+        viewer.fail(e)
+    finally:
+        viewer.end()  # does nothing when reply_to() already ended the turn
+
+
+async def reply_to(new_msg: discord.Message, config: dict[str, Any], received_at: float) -> None:
+    global last_task_time
+
     viewer.stage("chain", "running")
 
     provider_slash_model = curr_model
@@ -227,6 +237,8 @@ async def on_message(new_msg: discord.Message) -> None:
 
     max_text = config.get("max_text", 100000)
     max_images = config.get("max_images", 5) if accept_images else 0
+    # Images in the whole chain: the newest ones win, so a long chain doesn't resend a pile of old pictures with every reply
+    images_left = config.get("max_chain_images", max_images) if accept_images else 0
     max_messages = config.get("max_messages", 25)
 
     # Build message chain and set user warnings
@@ -253,15 +265,30 @@ async def on_message(new_msg: discord.Message) -> None:
                     # empty message (she answered "<" to one)
                     if not cleaned_content:
                         media = [f"(прислали стикер «{sticker.name}», ты его не видишь)" for sticker in curr_msg.stickers]
-                        media += [
-                            "(прислали файл)" if not (att.content_type or "").startswith("image") else "" if max_images else "(прислали картинку, ты её не видишь)"
-                            for att in curr_msg.attachments
-                        ]
+                        is_panic_audio = curr_msg.author == discord_bot.user and (
+                            getattr(curr_msg.flags, "voice", False)
+                            or any((att.content_type or "").startswith("audio/") for att in curr_msg.attachments)
+                        )
+                        if is_panic_audio:
+                            # Her own voice/audio message is the panic sound (lost from the cache by a restart)
+                            media.append(bee.PANIC_TEXT[bee.language([new_msg.content])])
+                        elif getattr(curr_msg.flags, "voice", False):
+                            media.append("(прислали голосовое, ты его не слышишь)")
+                        else:
+                            media += [
+                                "(прислали файл)" if not (att.content_type or "").startswith("image") else "" if max_images else "(прислали картинку, ты её не видишь)"
+                                for att in curr_msg.attachments
+                            ]
                         cleaned_content = " ".join(filter(None, media))
 
                 good_attachments = [att for att in curr_msg.attachments if att.content_type and any(att.content_type.startswith(x) for x in ("text", "image"))]
 
-                attachment_responses = await asyncio.gather(*[httpx_client.get(att.url) for att in good_attachments])
+                # A download that fails (Discord's CDN timing out...) loses that attachment, not the whole reply
+                results = await asyncio.gather(*[httpx_client.get(att.url, timeout=15) for att in good_attachments], return_exceptions=True)
+                failed_attachments = [att for att, resp in zip(good_attachments, results) if isinstance(resp, BaseException) or resp.is_error]
+                for att in failed_attachments:
+                    logging.warning(f"Couldn't download attachment {att.filename!r} of message {curr_msg.id}")
+                fetched = [(att, resp) for att, resp in zip(good_attachments, results) if att not in failed_attachments]
 
                 curr_node.role = "assistant" if curr_msg.author == discord_bot.user else "user"
 
@@ -269,12 +296,12 @@ async def on_message(new_msg: discord.Message) -> None:
                     ([cleaned_content] if cleaned_content else [])
                     + ["\n".join(filter(None, (embed.title, embed.description, embed.footer.text))) for embed in curr_msg.embeds]
                     + [component.content for component in curr_msg.components if component.type == discord.ComponentType.text_display]
-                    + [resp.text for att, resp in zip(good_attachments, attachment_responses) if att.content_type.startswith("text")]
+                    + [resp.text for att, resp in fetched if att.content_type.startswith("text")]
                 )
 
                 stills = await asyncio.gather(*[
                     asyncio.to_thread(bee.still_image, resp.content, att.content_type)
-                    for att, resp in zip(good_attachments, attachment_responses)
+                    for att, resp in fetched
                     if att.content_type.startswith("image")
                 ])
                 curr_node.images = [
@@ -285,7 +312,7 @@ async def on_message(new_msg: discord.Message) -> None:
                 if curr_node.role == "user" and (curr_node.text or curr_node.images) and config.get("prefix_user_ids", True):
                     curr_node.text = f"<@{curr_msg.author.id}>: {curr_node.text}"
 
-                curr_node.has_bad_attachments = len(curr_msg.attachments) > len(good_attachments)
+                curr_node.has_bad_attachments = len(curr_msg.attachments) > len(good_attachments) or bool(failed_attachments)
 
                 try:
                     if (
@@ -310,8 +337,10 @@ async def on_message(new_msg: discord.Message) -> None:
                     logging.exception("Error fetching next message in the chain")
                     curr_node.fetch_parent_failed = True
 
-            if curr_node.images[:max_images]:
-                content = [dict(type="text", text=curr_node.text[:max_text])] + curr_node.images[:max_images]
+            msg_images = curr_node.images[: min(max_images, images_left)]
+            images_left -= len(msg_images)
+            if msg_images:
+                content = [dict(type="text", text=curr_node.text[:max_text])] + msg_images
             else:
                 content = curr_node.text[:max_text]
 
@@ -343,14 +372,14 @@ async def on_message(new_msg: discord.Message) -> None:
         if satellite_cfg := config.get("satellite"):
             async with new_msg.channel.typing():
                 lang = bee.reply_language(messages)
-                notes, draw_request, panic = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
+                notes, draw_request, panic, fact = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
                 # Threatened with a slipper/jar/net: she sends `panic_sound` instead of a text reply
                 if panic and (panic_sound := config.get("panic_sound")) and not os.path.isfile(panic_sound):
                     logging.warning(f"panic_sound {panic_sound!r} not found, answering with text")
                     panic_sound = None
                 # Asked to draw (imagegen.py): the picture goes with her reply, a note tells her about it
                 elif draw_request and (imagegen_cfg := config.get("imagegen")):
-                    drawing = await imagegen.draw(draw_request, messages, lang, new_msg.author.id, imagegen_cfg, config["providers"], httpx_client)
+                    drawing = await imagegen.draw(draw_request, messages, lang, new_msg.author.id, imagegen_cfg, config["providers"], httpx_client, fact=fact)
                     final_notes.append(drawing["note"])
         messages, lang = bee.prepare(messages, notes=notes, final_notes=final_notes)
         viewer.stage("prompt", "done", lang=lang, examples=2 * len(bee.PROMPTS[lang]["examples"]), notes=notes + final_notes)
@@ -460,7 +489,12 @@ async def on_message(new_msg: discord.Message) -> None:
             if use_plain_responses:
                 viewer.stage("model", "done", raw="".join(response_contents), finish_reason=finish_reason, usage=usage)
                 # Loop guard and no "Сцинтилла:" label (see bee.py)
-                if bee_mode and (model_text := bee.guard("".join(response_contents))):
+                if bee_mode:
+                    model_text = bee.guard("".join(response_contents))
+                    if not model_text and drawing and drawing["image"]:
+                        model_text = "бззз~" if lang == "ru" else "bzzz~"  # the guard emptied her reply, but the drawing still goes out
+                    elif not model_text:
+                        logging.warning("Her reply was empty after the guard, sending nothing")
                     response_contents = [model_text[i : i + max_message_length] for i in range(0, len(model_text), max_message_length)]
 
                 # Don't answer instantly: wait until min_reply_delay seconds after the message came in ("typing..." shows meanwhile)
@@ -475,14 +509,20 @@ async def on_message(new_msg: discord.Message) -> None:
         logging.exception("Error while generating response")
         viewer.fail(e)
 
-    viewer.end(replies=[msg.jump_url for msg in response_msgs])
+    finally:
+        viewer.end(replies=[msg.jump_url for msg in response_msgs])
 
-    for response_msg in response_msgs:
-        msg_nodes[response_msg.id].text = model_text or "".join(response_contents)
-        if drawing and drawing["image"] and response_msg == response_msgs[0]:
-            msg_nodes[response_msg.id].drawing = drawing["prompt"]
-            msg_nodes[response_msg.id].images = [dict(type="image_url", image_url=dict(url=f"data:{drawing['media_type']};base64,{b64encode(drawing['image']).decode()}"))]
-        msg_nodes[response_msg.id].lock.release()
+        # reply_helper() left each of her messages' nodes locked until its text is set; release them whatever happened above
+        for response_msg in response_msgs:
+            node = msg_nodes[response_msg.id]
+            try:
+                node.text = model_text or "".join(response_contents)
+                if drawing and drawing["image"] and response_msg == response_msgs[0]:
+                    node.drawing = drawing["prompt"]
+                    node.images = [dict(type="image_url", image_url=dict(url=f"data:{drawing['media_type']};base64,{b64encode(drawing['image']).decode()}"))]
+            finally:
+                if node.lock.locked():
+                    node.lock.release()
 
     # Delete oldest MsgNodes (lowest message IDs) from the cache
     if (num_nodes := len(msg_nodes)) > MAX_MESSAGE_NODES:

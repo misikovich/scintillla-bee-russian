@@ -6,7 +6,8 @@ message asks for a picture and writes a short request ("draw": ...). This module
              The image model is text-to-image only, so an "edit" of an attached picture is a redraw from its description.
 2. generate: the image model (Recraft via OpenRouter's Images API) draws it. With `free_model` set, every picture tries
              that one first (OpenRouter's `:free` tier, 50 requests/day) and quietly falls back to `model` when it fails
-             (429 once the day's free requests are used up), so it goes back to free on its own the next day.
+             (429 once the day's free requests are used up), so it goes back to free on its own the next day. Not on a 400:
+             that's the prompt rejected (moderation), and the paid model would reject it too.
 3. note:     a system note for her reply ("you drew: ..."), the picture is attached to that reply.
 
 The prompt used is kept on her reply (MsgNode.drawing), so "make it bluer" changes that prompt instead of starting over.
@@ -45,6 +46,8 @@ plush, costume, mask or 3D render. Hyperrealistic, uncanny and funny. Don't use 
 outlines or cel-shaded for them.
 - Allowed: swearing, crude jokes and rude meme text, fictional characters, cartoon parodies, dark humor. Draw these, don't refuse.
 - Obscene words in the picture's text (мат, fuck, dick, cunt...): write them exactly as asked, uncensored, no stars.
+- A crude or obscene phrase meant as a joke or wordplay ("точка хуечка"): put it on the picture as text and draw the \
+scene absurd and funny; never draw literal genitals for it.
 - A photo of a person (a movie or TV still, a celebrity, anyone) to change: don't refuse. It's a redraw from your \
 description, not an edit of the photo: keep the original's style (a photo stays a photo, same lighting and framing) and \
 describe their look (face, hair, clothes, pose); a fictional character's name is fine.
@@ -59,18 +62,21 @@ you imagine them. A name to write on the picture still follows the rule above.
 Reply with JSON only: {{"prompt": "...", "aspect_ratio": "<one of {ratios}>", "caption": "<what is on the picture, \
 under 15 words, in {language}>"}} or {{"refuse": "<why, under 10 words, in {language}>"}}"""
 
+# Don't narrate the attachment: Discord shows the picture itself
 NOTES = {
     "ru": dict(
-        drawn="Ты умеешь рисовать и переделывать картинки. Просьбу ты выполнила: картинка готова и прикреплена к твоему ответу. На ней: {caption}. Ответь как обычно, по-пчелиному, можешь коротко сказать о ней пару слов, промпт не пересказывай. Не переспрашивай и не говори, что рисовала раньше: это новая картинка на это сообщение.",
+        drawn="Ты умеешь рисовать и переделывать картинки. Просьбу ты выполнила: картинка готова и прикреплена к твоему ответу. На ней: {caption}. Ответь как обычно, по-пчелиному, можешь коротко сказать о ней пару слов, промпт не пересказывай. Не переспрашивай и не говори, что рисовала раньше: это новая картинка на это сообщение. Не пиши заглушек вроде [Изображение: ...] или *прикрепляет картинку*: картинка и так прикреплена.",
         refused="Тебя попросили нарисовать картинку, но ты не стала: {reason}. Скажи это по-пчелиному.",
         failed="Тебя попросили нарисовать картинку, но не получилось (кисточка сломалась). Скажи это по-пчелиному, можно попробовать позже.",
         limited="Тебя попросили нарисовать картинку, но ты уже много рисовала и устала. Скажи это по-пчелиному, пусть попросят попозже.",
+        blocked="Тебя попросили нарисовать картинку, но фильтр картинок это не пропустил. Скажи это по-пчелиному, пусть переформулируют.",
     ),
     "en": dict(
-        drawn="You can draw and change pictures. You did what was asked: the picture is ready and attached to your reply. It shows: {caption}. Answer as usual, buzzing, maybe say a word or two about it, don't recite the prompt. Don't ask what to do and don't say you drew it before: this is a new picture for this message.",
+        drawn="You can draw and change pictures. You did what was asked: the picture is ready and attached to your reply. It shows: {caption}. Answer as usual, buzzing, maybe say a word or two about it, don't recite the prompt. Don't ask what to do and don't say you drew it before: this is a new picture for this message. Don't write placeholders like [Image: ...] or *attaches the picture*: it's attached already.",
         refused="You were asked to draw a picture but you didn't: {reason}. Say so, buzzing.",
         failed="You were asked to draw a picture but it didn't work out (your brush broke). Say so, buzzing; they can try later.",
         limited="You were asked to draw a picture but you've drawn a lot already and you're tired. Say so, buzzing; they can ask later.",
+        blocked="You were asked to draw a picture, but the image filter blocked it. Say so, buzzing; they can rephrase.",
     ),
 }
 
@@ -81,6 +87,8 @@ LANGUAGES = {"ru": "Russian", "en": "English"}
 # False positives are harmless (the space is invisible), so the roots are broad
 OBSCENE_RE = re.compile(
     r"\b\w*(?:ху[йеёяюи]|пи[зс]д|залуп|муди|мудак|влагалищ|член|хер|(?<![^\W\d_аоуыиъ])[её]б[аоуилёнш]|"
+    # more that Recraft 400'd on 2026-11-22
+    r"шлюх|жоп|говн|пид[оа]?р|бля[дт]|сучк|сук[аиуе]|"
     r"dick|puss(?:y|ies)|cunt|cock|penis|vagin|fuck|whore|slut)\w*", re.I)
 ZWSP = "\u200b"
 
@@ -88,6 +96,10 @@ ZWSP = "\u200b"
 def unblock(prompt: str) -> str:
     """The prompt with a zero-width space between the letters of every obscene word (see OBSCENE_RE)."""
     return OBSCENE_RE.sub(lambda m: ZWSP.join(m[0]), prompt)
+
+
+class ModerationError(RuntimeError):
+    """The image model rejected the prompt (HTTP 400, its moderation): another model or a retry won't help."""
 
 
 RATIOS = ("1:1", "2:1", "1:2", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16")
@@ -113,21 +125,40 @@ class Painter:
         self.writer_params = cfg.get("writer_params") or {}
         params = {k: v for k, v in self.writer_params.items() if k != "max_tokens"}
         self.writers = fallback.attempts(cfg["writer"], params, cfg.get("writer_fallback"), cfg.get("writer_fallback_params"), providers)
+        self.retry_writers = self.without_reasoning(cfg, params, providers)
         self.image_models = [self.image_endpoint(cfg[key], providers) for key in ("free_model", "model") if cfg.get(key)]
         self.free_timeout = cfg.get("free_timeout", 20)
         self.style = cfg.get("style") or DEFAULT_STYLE
         self.max_images = cfg.get("max_input_images", 2)
         self.http = http
 
-    async def write_prompt(self, request: str, messages: list[dict[str, Any]], lang: str) -> dict[str, Any]:
+    @staticmethod
+    def without_reasoning(cfg: dict[str, Any], params: dict[str, Any], providers: dict[str, Any]) -> list[fallback.Attempt]:
+        """The writer tries again with no reasoning: no `reasoning_effort` (Mistral then answers directly; it 422s on
+        `reasoning: {}`), and OpenRouter, which reasons by default, gets `reasoning: {enabled: false}`."""
+        plain = {k: v for k, v in params.items() if k != "reasoning_effort"}
+        fallback_params = {k: v for k, v in (cfg.get("writer_fallback_params") or {}).items() if k not in ("reasoning_effort", "reasoning")}
+        if (cfg.get("writer_fallback") or "").startswith("openrouter/"):
+            fallback_params["reasoning"] = dict(enabled=False)
+        tries = fallback.attempts(cfg["writer"], plain, cfg.get("writer_fallback"), fallback_params, providers)
+        if cfg["writer"].startswith("openrouter/"):
+            tries[0] = (tries[0][0], tries[0][1], (tries[0][2] or {}) | dict(reasoning=dict(enabled=False)))
+        return tries
+
+    async def write_prompt(self, request: str, messages: list[dict[str, Any]], lang: str, fact: str | None = None) -> dict[str, Any]:
         system = PROMPT_WRITER.format(style=self.style, ratios=", ".join(RATIOS), language=LANGUAGES[lang])
         text = f"Today is {datetime.now().astimezone():%Y-%m-%d}.\n\nChat:\n{transcript(messages)}\n\nRequest: {request}"
+        if fact:  # the satellite's search: recent people, characters and events the writer doesn't know
+            text += f"\n\nFresh web info: {fact}"
         images = images_of(messages, self.max_images)
-        reply = await fallback.complete(
-            self.writers, "draw", "writer", lambda resp: text_of(resp.choices[0].message.content).strip(),
+        kwargs = dict(
             messages=[dict(role="system", content=system), dict(role="user", content=[dict(type="text", text=text)] + images if images else text)],
             max_tokens=self.writer_params.get("max_tokens", 4000),
         )
+        reply = await fallback.complete(self.writers, "draw", "writer", lambda resp: text_of(resp.choices[0].message.content).strip(), **kwargs)
+        if not reply:  # it spent all of max_tokens reasoning: once more, without
+            logging.info("Imagegen: empty writer reply, retrying without reasoning")
+            reply = await fallback.complete(self.retry_writers, "draw", "writer (no reasoning)", lambda resp: text_of(resp.choices[0].message.content).strip(), **kwargs)
         try:
             # The first object only: now and then it writes a second one after it
             return json.JSONDecoder().raw_decode(reply[reply.index("{"):])[0]
@@ -140,7 +171,8 @@ class Painter:
         return model, providers[provider]["base_url"].rstrip("/"), providers[provider].get("api_key")
 
     async def generate(self, prompt: str, aspect_ratio: str) -> tuple[bytes, str]:
-        """Tries the image models in order (the free one first, if set); the last one's error is raised."""
+        """Tries the image models in order (the free one first, if set); the last one's error is raised. A 400 (the
+        prompt rejected, e.g. by moderation) raises ModerationError at once: the paid model would reject it too."""
         for i, (model, base, key) in enumerate(self.image_models):
             last = i == len(self.image_models) - 1
             try:
@@ -151,6 +183,8 @@ class Painter:
                         json=dict(model=model, prompt=unblock(prompt), n=1, aspect_ratio=aspect_ratio if aspect_ratio in RATIOS else "1:1"),
                         timeout=60 if last else self.free_timeout,
                     )
+                    if resp.status_code == 400 and "moderation" in resp.text.lower():
+                        raise ModerationError(f"images HTTP 400: {resp.text[:300]}")
                     if resp.is_error:
                         raise RuntimeError(f"images HTTP {resp.status_code}: {resp.text[:300]}")
                     body = resp.json()
@@ -159,13 +193,14 @@ class Painter:
                 viewer.stage("draw", "running", step="generate", model=model)
                 return b64decode(image["b64_json"]), image.get("media_type") or "image/png"
             except Exception as e:
-                if last:
+                if last or isinstance(e, ModerationError):
                     raise
                 logging.info(f"Imagegen: {model} failed ({type(e).__name__}: {e}), trying {self.image_models[i + 1][0]}")
         raise RuntimeError("no image model")
 
 
-async def draw(request: str, messages: list[dict[str, Any]], lang: str, user_id: int, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient) -> dict[str, Any]:
+async def draw(request: str, messages: list[dict[str, Any]], lang: str, user_id: int, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient,
+               fact: str | None = None) -> dict[str, Any]:
     """dict(note=..., image=bytes|None, media_type, prompt): the note for her reply and, when it worked, the picture."""
     result: dict[str, Any] = dict(note=None, image=None, media_type=None, prompt=None)
     notes = NOTES[lang]
@@ -179,7 +214,7 @@ async def draw(request: str, messages: list[dict[str, Any]], lang: str, user_id:
     started = time.monotonic()
     try:
         painter = Painter(cfg, providers, http)
-        plan = await asyncio.wait_for(painter.write_prompt(request, messages, lang), cfg.get("writer_timeout", 30))
+        plan = await asyncio.wait_for(painter.write_prompt(request, messages, lang, fact), cfg.get("writer_timeout", 30))
         if not plan.get("prompt"):
             logging.info(f"Imagegen: refused {request!r}: {plan.get('refuse')!r}")
             result["note"] = notes["refused"].format(reason=(plan.get("refuse") or ("не захотела" if lang == "ru" else "didn't want to")).rstrip("."))
@@ -188,6 +223,12 @@ async def draw(request: str, messages: list[dict[str, Any]], lang: str, user_id:
         logging.info(f"Imagegen: prompt ({time.monotonic() - started:.1f} s) {plan['prompt']!r}")
         viewer.stage("draw", "running", step="generate", prompt=plan["prompt"], aspect_ratio=plan.get("aspect_ratio"), caption=plan.get("caption"))
         result["image"], result["media_type"] = await asyncio.wait_for(painter.generate(plan["prompt"], plan.get("aspect_ratio", "1:1")), cfg.get("image_timeout", 60))
+    except ModerationError as e:
+        # its own note, so they rephrase instead of asking the same thing again (4 times in a row on 2026-11-22)
+        logging.warning(f"Imagegen: blocked by the image model ({e})")
+        result["note"] = notes["blocked"]
+        viewer.stage("draw", "done", refused="moderation", error=str(e), note=result["note"])
+        return result
     except Exception as e:
         logging.warning(f"Imagegen: failed ({type(e).__name__}: {e})")
         result["note"] = notes["failed"]

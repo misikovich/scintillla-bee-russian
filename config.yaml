@@ -9,6 +9,8 @@ status_message: bzz~
 max_text: 2000
 # She sees images (DeepSeek v4.1 Flash takes them); older ones in the reply chain are sent again with every reply
 max_images: 2
+# ...but at most this many in the whole reply chain (the newest first), so a long chain doesn't resend a pile of pictures
+max_chain_images: 2
 max_messages: 8
 
 use_plain_responses: true
@@ -64,7 +66,8 @@ models:
   # eat max_tokens, so reasoning is off there
   cliproxy/mistral/deepseek-v4-1-flash-1017:vision:
     temperature: 0.7
-    max_tokens: 150
+    # room for a long answer (code, a list) so it isn't cut mid-sentence; her prompt and examples keep casual replies short
+    max_tokens: 280
     fallback: openrouter/deepseek/deepseek-v4.1-flash-1017
     fallback_params:
       reasoning:
@@ -88,6 +91,8 @@ satellite:
   results: 5
   snippet_chars: 500
   timeout: 5
+  # seconds each call to `model` may take before it falls back (so a slow Mistral route/summarize still reaches OpenRouter within `timeout`)
+  attempt_timeout: 2.5
 
 # Image generation (imagegen.py): when the satellite's router sees a request to draw (or to change a picture), `writer`
 # (a vision model, low reasoning) writes the image prompt from the request, the chat and the attached pictures, `model`
@@ -125,9 +130,11 @@ viewer:
   port: 8770
   host_env: VIEWER_HOST
   # Every finished reply (all steps, data, timings, API calls with tokens, its log lines) to <dir>/turns-YYYY-MM-DD.jsonl,
-  # every log line to log-YYYY-MM-DD.jsonl, pictures to images/; the page reloads from it after a restart. Never
-  # deleted (chats included). `python viewer.py stats data 7` sums it up. Delete the line to stop recording
+  # every log line to log-YYYY-MM-DD.jsonl, pictures to images/; the page reloads from it after a restart.
+  # Chats are kept in it, so see keep_days. `python viewer.py stats data 7` sums it up. Delete the line to stop recording
   record_dir: data
+  # Recorded files older than this many days are deleted (data/ was never cleaned before). Delete the line to keep everything
+  keep_days: 30
 
 # Models that get Scintilla's prompt and examples (bee.py); system_prompt is skipped for them
 bee_models:

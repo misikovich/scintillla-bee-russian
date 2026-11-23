@@ -129,13 +129,33 @@ def clean_user_text(text: str) -> str:
 SPEAKER_RE = re.compile(r"^\s*\**\s*(?:Сцинтилла|Scintilla)\s*(?::\s*\**|\**\s*:)\s*", re.I)
 
 # With a drawing attached she sometimes adds a markdown image of her own, a made-up link ("![бззз](https://oaidalleapi...)",
-# 4 times by 2026-11-21, copied from her earlier reply once it's in the chain); Discord shows it as text
+# 4 times by 2026-11-21, copied from her earlier reply once it's in the chain); Discord shows it as text.
+# She can also narrate attaching the image or add a fake bracketed/parenthesized caption ("[Изображение: ...]",
+# "*бззз прикрепляет картинку*"), which similarly propagates across follow-up turns in the chain.
 MD_IMAGE_RE = re.compile(r"!\[[^\]\n]*\](?:\([^)\s]*\)?)?")
+ATTACH_ACTION_RE = re.compile(
+    r"\*[^*\n]{0,40}(?:прикрепля\w*|прикрепил\w*|(?:кидает|кинула)\b|attach\w*|sends?)[^*\n]{0,30}"
+    r"(?:картинк\w*|изображени\w*|постер\w*|рисун\w*|фото\w*|image|picture|drawing|poster)[^*\n]{0,20}\*",
+    re.I,
+)
+FAKE_IMAGE_RE = re.compile(
+    r"\[(?:Изображение|Картинка|Фото|Рисунок|Постер|Image|Picture|Photo|Drawing)\s*:[^\]\n]*\]?"
+    r"|\(\s*(?:картинка|изображение|image|picture)\s*:[^)\n]{10,}\)?",
+    re.I,
+)
+
+
+def strip_fake_images(text: str) -> str:
+    """Drop made-up markdown images, fake image captions, and image-attachment narration."""
+    text = MD_IMAGE_RE.sub("", text)
+    text = ATTACH_ACTION_RE.sub("", text)
+    text = FAKE_IMAGE_RE.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def guard(text: str) -> str:
-    """Cut down loops, drop a "Сцинтилла:" label at the start of her reply and markdown images."""
-    text = MD_IMAGE_RE.sub("", SPEAKER_RE.sub("", text))
+    """Cut down loops, drop a "Сцинтилла:" label at the start of her reply and fake image placeholders."""
+    text = strip_fake_images(SPEAKER_RE.sub("", text))
     text = CHAR_RUN_RE.sub(lambda m: m.group(1) * 8, text)
     return CHUNK_RUN_RE.sub(lambda m: m.group(1) * 3, text).strip()
 
@@ -173,7 +193,7 @@ def prepare(
     for msg in messages:
         images = [part for part in msg["content"] if part.get("type") == "image_url"] if isinstance(msg["content"], list) else []
         text = text_of(msg["content"])
-        text = MD_IMAGE_RE.sub("", text).strip() if msg["role"] == "assistant" else clean_user_text(text)
+        text = strip_fake_images(text) if msg["role"] == "assistant" else clean_user_text(text)
         if not text:
             if not images:
                 continue

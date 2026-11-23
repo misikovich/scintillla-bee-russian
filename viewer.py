@@ -22,6 +22,7 @@ from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
 from base64 import b64decode
+from datetime import date, datetime, timedelta, timezone
 import glob
 import hashlib
 import itertools
@@ -47,7 +48,99 @@ state_fn: Callable[[], dict[str, Any]] = dict
 started_at = time.time()
 _ids = itertools.count(1)
 record_dir: str | None = None
+_keep_days: int = 0
+_last_prune_day: str | None = None
+_bg_tasks: set[asyncio.Task] = set()
 IMAGE_NAME = re.compile(r"^[0-9a-f]{24}\.[a-z0-9]{2,5}$")
+DATA_URI_RE = re.compile(r"data:[^\s\"'<>]{1,80};base64,[A-Za-z0-9+/=]{100,}")
+IMG_REF_RE = re.compile(r"img/([0-9a-f]{24}\.[a-z0-9]{2,5})")
+DATED_FILE_RE = re.compile(r"^(?:turns|log)-(\d{4}-\d{2}-\d{2})\.jsonl$")
+
+
+def _scrub(text: str, limit: int | None = None) -> str:
+    """Replace embedded base64 data URIs (e.g. echoed in provider errors) and optionally cap length."""
+    text = DATA_URI_RE.sub("<base64 omitted>", text)
+    return text[:limit] if limit is not None and len(text) > limit else text
+
+
+def prune(directory: str, keep_days: int) -> tuple[int, int]:
+    """Delete turns/log JSONL files older than `keep_days` UTC days and unreferenced images older than 1 hour."""
+    if keep_days <= 0:
+        return 0, 0
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=keep_days)
+    deleted_jsonl = 0
+    kept_turns: list[str] = []
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return 0, 0
+
+    for name in entries:
+        m = DATED_FILE_RE.match(name)
+        if not m:
+            continue
+        try:
+            file_date = date.fromisoformat(m.group(1))
+        except ValueError:
+            continue
+        path = os.path.join(directory, name)
+        if file_date < cutoff:
+            try:
+                os.remove(path)
+                deleted_jsonl += 1
+            except OSError:
+                pass
+        elif name.startswith("turns-"):
+            kept_turns.append(path)
+
+    referenced: set[str] = set()
+    for path in kept_turns:
+        try:
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    referenced.update(IMG_REF_RE.findall(line))
+        except OSError:
+            pass
+
+    deleted_images = 0
+    images_dir = os.path.join(directory, "images")
+    age_cutoff = time.time() - 3600
+    try:
+        image_files = os.listdir(images_dir)
+    except OSError:
+        image_files = []
+    for name in image_files:
+        if not IMAGE_NAME.match(name) or name in referenced:
+            continue
+        path = os.path.join(images_dir, name)
+        try:
+            if os.path.getmtime(path) < age_cutoff:
+                os.remove(path)
+                deleted_images += 1
+        except OSError:
+            pass
+
+    return deleted_jsonl, deleted_images
+
+
+def _schedule_prune(directory: str, keep_days: int) -> bool:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+
+    async def _run() -> None:
+        try:
+            jsonl_n, img_n = await asyncio.to_thread(prune, directory, keep_days)
+            if jsonl_n or img_n:
+                logging.info(f"Viewer: pruned {jsonl_n} old log/turn file(s) and {img_n} unreferenced image(s)")
+        except Exception as e:
+            logging.warning(f"Viewer: prune failed ({type(e).__name__}: {e})")
+
+    task = loop.create_task(_run())
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return True
 
 
 # --- recording ---
@@ -62,9 +155,11 @@ def _own(path: str) -> None:
 
 
 def _append(kind: str, at: float, record: dict[str, Any]) -> None:
+    global _last_prune_day
     if not record_dir:
         return
-    path = os.path.join(record_dir, f"{kind}-{time.strftime('%Y-%m-%d', time.gmtime(at))}.jsonl")
+    day = time.strftime("%Y-%m-%d", time.gmtime(at))
+    path = os.path.join(record_dir, f"{kind}-{day}.jsonl")
     try:
         new = not os.path.exists(path)
         with open(path, "a", encoding="utf-8") as f:
@@ -73,6 +168,8 @@ def _append(kind: str, at: float, record: dict[str, Any]) -> None:
             _own(path)
     except OSError as e:  # not logging.*: this also runs inside the log handler
         print(f"viewer: can't write {path}: {e}", file=sys.stderr)
+    if _keep_days and day != _last_prune_day and _schedule_prune(record_dir, _keep_days):
+        _last_prune_day = day
 
 
 def _read_last(kind: str, n: int) -> list[dict[str, Any]]:
@@ -138,22 +235,27 @@ class Turn:
                     _own(path)
                 except OSError as e:
                     print(f"viewer: can't write {path}: {e}", file=sys.stderr)
+            else:
+                try:
+                    os.utime(path, None)  # keep mtime fresh so a concurrent prune won't delete a re-posted image
+                except OSError:
+                    pass
         else:
             self.images[name] = (raw, kind)
         self._image_names[url] = f"img/{name}"
         return f"img/{name}"
 
     def clean(self, value: Any) -> Any:
-        """JSON-safe copy; data: URLs become img/<name> links."""
+        """JSON-safe copy; data: URLs become img/<name> links, embedded base64 blobs are scrubbed."""
         if isinstance(value, str):
-            return self.image(value) if value.startswith("data:") else value
+            return self.image(value) if value.startswith("data:") else _scrub(value)
         if isinstance(value, dict):
             return {k: self.clean(v) for k, v in value.items() if k != "lock"}
         if isinstance(value, (list, tuple)):
             return [self.clean(v) for v in value]
         if value is None or isinstance(value, (int, float, bool)):
             return value
-        return str(value)
+        return _scrub(str(value))
 
     def stage(self, name: str, status: str, **data: Any) -> None:
         st = self.stages.setdefault(name, dict(status="pending", data={}))
@@ -214,7 +316,7 @@ def timed(stage: str, what: str, **data: Any):
     try:
         yield record
     except BaseException as e:  # CancelledError too: that's a timeout
-        record["error"] = type(e).__name__ + (f": {e}" if str(e) else "")
+        record["error"] = _scrub(type(e).__name__ + (f": {e}" if str(e) else ""), 2000)
         raise
     finally:
         call(stage, what, (time.monotonic() - started) * 1000, **record)
@@ -225,7 +327,8 @@ def fail(error: BaseException | None = None) -> None:
     if not (turn := current.get()):
         return
     running = [n for n, s in turn.stages.items() if s["status"] == "running"] or ["model"]
-    turn.stage(running[-1], "error", error="".join(traceback.format_exception(error))[-3000:] if error else "failed")
+    err_text = _scrub("".join(traceback.format_exception(error)))[-3000:] if error else "failed"
+    turn.stage(running[-1], "error", error=err_text)
     turn.status = "error"
 
 
@@ -260,7 +363,7 @@ class LogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            line = dict(at=record.created, level=record.levelname, name=record.name, msg=self.format(record).strip("\n")[:4000])
+            line = dict(at=record.created, level=record.levelname, name=record.name, msg=_scrub(self.format(record).strip("\n"), 4000))
         except Exception:
             return
         if turn := current.get():
@@ -317,15 +420,23 @@ async def events(request: web.Request) -> web.StreamResponse:
 
 
 async def serve(cfg: dict[str, Any] | None, get_state: Callable[[], dict[str, Any]]) -> None:
-    global state_fn, record_dir, _ids
+    global state_fn, record_dir, _ids, _keep_days, _last_prune_day
     if not cfg:
         return
     state_fn = get_state
+    keep_days = cfg.get("keep_days")
+    _keep_days = keep_days if isinstance(keep_days, int) and not isinstance(keep_days, bool) and keep_days > 0 else 0
+    _last_prune_day = None
     if cfg.get("record_dir"):
         try:
             os.makedirs(os.path.join(cfg["record_dir"], "images"), exist_ok=True)
             record_dir = cfg["record_dir"]
             _own(os.path.join(record_dir, "images"))
+            if _keep_days:
+                _last_prune_day = time.strftime("%Y-%m-%d", time.gmtime())
+                jsonl_n, img_n = await asyncio.to_thread(prune, record_dir, _keep_days)
+                if jsonl_n or img_n:
+                    logging.info(f"Viewer: pruned {jsonl_n} old log/turn file(s) and {img_n} unreferenced image(s)")
             turns.extend(Stored(t) for t in _read_last("turns", turns.maxlen))
             logs.extend(_read_last("log", logs.maxlen))
             _ids = itertools.count(max((t.id for t in turns), default=0) + 1)

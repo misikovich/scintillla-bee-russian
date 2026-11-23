@@ -4,6 +4,7 @@ chat model (`fallback:` in its `models:` entry), the satellite (`fallback:` in `
 (`writer_fallback:` in `imagegen:`).
 
 The first model gets no retries and a short connect timeout when it has a fallback, so a dead provider costs little time.
+`read_timeout` (seconds) shortens its read timeout too, for callers with a deadline of their own (the satellite).
 """
 
 import logging
@@ -17,20 +18,35 @@ import viewer
 # (client, model id at that provider, extra_body)
 Attempt = tuple[AsyncOpenAI, str, dict[str, Any] | None]
 
-QUICK = dict(max_retries=0, timeout=httpx.Timeout(60, connect=5))
+# One AsyncOpenAI (and its connection pool) per provider and settings, not one per call
+_clients: dict[tuple, AsyncOpenAI] = {}
 
 
-def client(name: str, providers: dict[str, Any], **kwargs: Any) -> tuple[AsyncOpenAI, str]:
-    """An OpenAI client for "provider/model[:vision]" and the model id to send."""
+def client(name: str, providers: dict[str, Any], max_retries: int | None = None, timeout: httpx.Timeout | None = None) -> tuple[AsyncOpenAI, str]:
+    """An OpenAI client for "provider/model[:vision]" and the model id to send. Clients are cached."""
     provider, model = name.removesuffix(":vision").split("/", 1)
     cfg = providers[provider]
-    return AsyncOpenAI(base_url=cfg["base_url"], api_key=cfg.get("api_key", "sk-no-key-required"), **kwargs), model
+    api_key = cfg.get("api_key", "sk-no-key-required")
+    key = (cfg["base_url"], api_key, max_retries, timeout and (timeout.connect, timeout.read))
+    if key not in _clients:
+        kwargs = {k: v for k, v in dict(max_retries=max_retries, timeout=timeout).items() if v is not None}
+        _clients[key] = AsyncOpenAI(base_url=cfg["base_url"], api_key=api_key, **kwargs)
+    return _clients[key], model
 
 
-def attempts(name: str, params: dict[str, Any] | None, fallback: str | None, fallback_params: dict[str, Any] | None, providers: dict[str, Any]) -> list[Attempt]:
-    """The model, then its fallback (if any); each with its extra_body."""
+def attempts(
+    name: str, params: dict[str, Any] | None, fallback: str | None, fallback_params: dict[str, Any] | None, providers: dict[str, Any],
+    read_timeout: float | None = None,
+) -> list[Attempt]:
+    """The model, then its fallback (if any); each with its extra_body. With a fallback the model gets no retries and a
+    short connect timeout; `read_timeout` also caps how long it may take to answer (60 s otherwise)."""
     params = params or {}
-    result = [(*client(name, providers, **(QUICK if fallback else {})), params or None)]
+    quick = {}
+    if fallback or read_timeout:
+        quick = dict(timeout=httpx.Timeout(read_timeout or 60, connect=min(5.0, read_timeout) if read_timeout else 5))
+        if fallback:
+            quick["max_retries"] = 0
+    result = [(*client(name, providers, **quick), params or None)]
     if fallback:
         result.append((*client(fallback, providers), (params | (fallback_params or {})) or None))
     return result
@@ -68,7 +84,7 @@ async def stream(tries: list[Attempt], **kwargs: Any) -> AsyncIterator[Any]:
             if i == len(tries) - 1:
                 raise
             log_failure(tries[i], e, tries[i + 1])
-            viewer.stage("model", "running", model=tries[i + 1][1], params=tries[i + 1][2], fallback_from=model, fallback_error=f"{type(e).__name__}: {e}")
+            viewer.stage("model", "running", model=tries[i + 1][1], params=tries[i + 1][2], fallback_from=model, fallback_error=f"{type(e).__name__}: {e}"[:500])
             continue
         yield first
         async for chunk in chunks:

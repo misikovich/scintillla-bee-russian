@@ -65,7 +65,8 @@ in the Computers repo. The MiniCPM server itself (`~/minicpm5`) still runs, for 
   so she ran on OpenRouter for a day. Now Mistral is first again and OpenRouter (`OPENROUTER_API_KEY`, the same
   DeepSeek v4.1 Flash) is the fallback for her model (`fallback:`/`fallback_params:` in its `models:` entry), the
   satellite (`fallback:` in `satellite:`) and the draw writer (`writer_fallback:`). Any error falls back (connection, 4xx,
-  5xx); the first model has no retries and a 5 s connect timeout. Her stream falls back only before its first chunk.
+  5xx); the first model has no retries and a 5 s connect timeout (or `attempt_timeout: 2.5` for the satellite so it falls
+  back inside the 5 s deadline). Clients are cached/reused across turns. Her stream falls back only before its first chunk.
   OpenRouter needs `reasoning: {enabled: false}` (it reasons by default and eats max_tokens); `reasoning_effort: low`
   works on both. Tested with a dead port and a bad key: ~0.3-0.9 s to an OpenRouter answer. Logged as "... falling back to".
 
@@ -139,11 +140,15 @@ that's what is asked. Then, after the satellite (outside its 5 s deadline) and s
   subject ("пчол сделай картинку марго писает в самовар" drew a bee named Margo; 240 of 606 recorded "пчол" requests had a
   bee in them, some rightly: "как ты срешь"). `satellite.unaddressed()` strips it from user messages in `transcript()`, which
   the router, summarizer and draw writer all read; "пчол нарисуй себя" still draws her.
-- Fake image links (2026-11-21): with a drawing attached she twice (in ~770 drawing turns) wrote her own
-  "![бззз](https://oaidalleapiprodscus...)" (ChatGPT's DALL-E link format, from the model's training), shown as text in
-  Discord. Once it was in the chain she copied it: 4 of the 6 were copies, and replaying those turns gave 4-10/10. Replaying
-  the 2 first ones gave 0/100 with or without her earlier pictures in the chain. `bee.MD_IMAGE_RE` strips markdown images from
-  her reply (`guard()`) and from her earlier turns in `prepare()`; with the chain cleaned, all 6 replayed turns gave 0/48.
+- Fake image links & placeholders (2026-11-21..23): with a drawing attached she sometimes wrote her own
+  "![бззз](https://oaidalleapiprodscus...)" or fake captions/narration ("*бззз прикрепляет картинку*", "[Изображение: ...]",
+  "(картинка: ...)"), which then propagated across follow-up turns in the chain. `bee.strip_fake_images()` strips all of
+  these from her reply (`guard()`) and from her earlier turns in `prepare()`.
+- Imagegen hardening (2026-11-23): HTTP 400 moderation errors from `:free` raise `ModerationError` and skip the paid model,
+  giving a `blocked` note ("rephrase") instead of "brush broke". If the writer burns all `max_tokens` on reasoning and returns
+  empty, it retries once without reasoning. When a turn triggers both search and draw, the search `fact` is passed to the writer.
+  `OBSCENE_RE` also covers `шлюх`/`жоп`/`говн`/`пид[оа]?р`/`бля[дт]`/`сучк`/`сук[аиуе]`, and the writer keeps crude wordplay
+  as text rather than literal genitalia. `max_chain_images` caps total images resent across a reply chain.
 - Unknown people (2026-11-22): the writer refused ~30% of requests for someone it didn't know ("сгенерируй Илью
   Шаломова": "не знаю, кто это, опиши внешность"; also friends' names, nicks, obscure characters and styles; 14 such turns
   in 1532 draw turns, and people kept repeating them). Its prompt never asked for that. Now it makes up a fitting look
@@ -193,12 +198,13 @@ reply. Under the steps, a table of the reply's API calls (when, how long, tokens
   `run()`), draw writer/image (each attempt, the failed free one too), with model, ms, `usage` and the raw reply or error.
   The main model's usage comes from the last stream chunk (Mistral sends it there without `stream_options`). OpenRouter's
   images usage has `cost` (0 for `:free`).
-- Recording (2026-11-17, `record_dir: data`): each finished turn is one JSON line in `data/turns-YYYY-MM-DD.jsonl` (UTC
+- Recording (2026-11-17, `record_dir: data`, `keep_days: 30`): each finished turn is one JSON line in `data/turns-YYYY-MM-DD.jsonl` (UTC
   date; `v: 1`; everything the page shows, incl. `stages.*.steps` = [[sub-step, ms]], `calls`, `logs`), every log line
-  in `data/log-YYYY-MM-DD.jsonl`, images once each in `data/images/<sha256[:24]>.<ext>` (served at `/img/<name>`). A turn
-  is ~6-11 KB (mostly her full prompt in `stages.model.data.messages`), a drawing ~1 MB; nothing is ever deleted. Turns
-  that never end (a crash mid-reply) aren't written. docker-compose mounts `./data` writable (the rest of `/app` is
-  read-only); files are chowned to the owner of `data/`, since the container runs as root.
+  in `data/log-YYYY-MM-DD.jsonl`, images once each in `data/images/<sha256[:24]>.<ext>` (served at `/img/<name>`). Embedded
+  base64 data URIs in errors/logs are scrubbed and error strings truncated so provider echoes can't bloat JSONL files. With
+  `keep_days` set, `viewer.prune()` removes expired JSONL files and unreferenced images on startup and daily. Turns that
+  never end aren't written; `on_message` wraps turns in `try/finally` so `viewer.end()` always runs. docker-compose mounts
+  `./data` writable (the rest of `/app` is read-only); files are chowned to the owner of `data/`, since the container runs as root.
 - After a restart the page reloads the last 60 turns and 400 log lines from `data/`, and turn ids continue from there.
   Without `record_dir` all of it is in memory only.
 - `python viewer.py stats [data] [days]` (or `docker compose exec bot python viewer.py stats data 7`): what happened (search/

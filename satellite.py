@@ -36,7 +36,9 @@ Search only when a good reply needs facts it can't know or would likely get wron
 - ALWAYS when the newest message asks to look something up (найди, загугли, погугли, чекни, проверь, look up, google, \
 check, search), also when it repeats or corrects an earlier request because the bot's answer was wrong or missing
 Otherwise never search for: chit-chat, greetings, feelings, insults, roleplay (*actions*), jokes, opinions, questions \
-about the bot or the people in the chat, things the chat already answered correctly, general knowledge, advice, math.
+about the bot or the people in the chat, things the chat already answered correctly, general knowledge, advice, math. \
+Chat members' nicks and their friends' names aren't searchable: no search for personal questions about them (someone's \
+birthday, age, looks, "what do you think of <name>").
 Also decide whether the NEWEST message asks the bot to draw or make a picture (нарисуй, сгенерируй, изобрази, сделай \
 картинку/арт/мем/лого/аватарку, draw, generate, make an image/meme/logo), or to change a picture: an attached one or one \
 the bot drew earlier (замени текст, перерисуй, сделай синим, добавь, убери, накидай, вставь, поменяй, make it ..., add, \
@@ -45,9 +47,12 @@ Also decide whether the NEWEST message threatens the bot (a bee) with something 
 slipper (тапок, тапка), a fly swatter (мухобойка), a rolled newspaper, a jar (банка), a net (сачок), bug spray \
 (дихлофос, раптор), e.g. "щас тапком прибью", "*достаёт банку*", "*замахивается тапком*", "I'll catch you with a net". \
 Not panic: these things mentioned without threatening her ("купил тапки", "банка огурцов"), questions about them, a \
-request to draw them.
-Reply with JSON only: {{"search": "<query>" or null, "draw": "<request>" or null, "panic": true or false}}.
-The draw request: what to draw, in English, complete on its own: resolve "it"/"same"/"её" from earlier messages, keep \
+request to draw them. Only the NEWEST message counts: never panic because an earlier message in the chat had a slipper, \
+jar or net in it; and a NEWEST message that asks for a picture is a draw request, never panic, whatever is in it.
+Reply with valid JSON only: {{"search": "<query>" or null, "draw": "<request>" or null, "panic": true or false}}. \
+Inside its strings escape double quotes as \\" (or use single quotes).
+The draw request: short, one or two sentences (the image prompt writer sees the chat and the pictures too); what to \
+draw, in English, complete on its own: resolve "it"/"same"/"её" from earlier messages, keep \
 the exact text to put on the picture in its original language and spelling, say "based on the attached picture" or \
 "change the bot's previous drawing" when that's what is asked. "его/её имя", "his name" is the name of the person or \
 character meant (say "the name of the man in the picture" if it's not in the chat), never the requester's nick.
@@ -77,6 +82,20 @@ NOTHING_FOUND = {
 LANGUAGES = {"ru": "Russian", "en": "English"}
 
 JSON_RE = re.compile(r"\{.*\}", re.S)
+# The router's fields when its JSON is broken: mostly unescaped quotes inside "draw" ("...with the text "Привет!"...").
+# A string value runs up to the next key or the closing brace
+ROUTER_FIELD_RE = r'"{key}"\s*:\s*(?:null|"(.*?)")\s*(?=,\s*"(?:search|draw|panic)"\s*:|\}})'
+
+
+def recover_router_json(reply: str) -> dict[str, Any] | None:
+    """{"search", "draw", "panic"} picked out of a router reply that json.loads rejected, or None if they aren't there."""
+    answer: dict[str, Any] = {}
+    for key in ("search", "draw"):
+        if match := re.search(ROUTER_FIELD_RE.format(key=key), reply, re.S):
+            answer[key] = match[1].replace('\\"', '"') if match[1] is not None else None
+    if panic := re.search(r'"panic"\s*:\s*(true|false)', reply):
+        answer["panic"] = panic[1] == "true"
+    return answer or None
 
 
 def text_of(content: Any) -> str:
@@ -119,7 +138,13 @@ def transcript(messages: list[dict[str, Any]], turns: int = 4) -> str:
 
 class Satellite:
     def __init__(self, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient):
-        self.tries = fallback.attempts(cfg["model"], cfg.get("params"), cfg.get("fallback"), cfg.get("fallback_params"), providers)
+        # Each try gets its own read timeout when there's a fallback, so a slow first model leaves the fallback time
+        # within `timeout`
+        attempt_timeout = cfg.get("attempt_timeout")
+        if attempt_timeout is None and cfg.get("fallback"):
+            attempt_timeout = min(2.5, cfg.get("timeout", 5) / 2)
+        self.tries = fallback.attempts(
+            cfg["model"], cfg.get("params"), cfg.get("fallback"), cfg.get("fallback_params"), providers, read_timeout=attempt_timeout)
         self.backend = cfg.get("search", "searxng")
         self.search_key = cfg.get("search_api_key")
         if self.backend in ("tavily", "exa") and not self.search_key:
@@ -140,29 +165,42 @@ class Satellite:
 
     async def route(self, messages: list[dict[str, Any]], today: str) -> tuple[str | None, str | None, bool]:
         """(search query, draw request, panic); query and request are None when not needed."""
-        reply = await self.ask(ROUTER_PROMPT.format(date=today), transcript(messages), 200, "route")
+        # 450: at 200 long draw requests were cut off mid-JSON
+        reply = await self.ask(ROUTER_PROMPT.format(date=today), transcript(messages), 450, "route")
         try:
             answer = json.loads(JSON_RE.search(reply).group())
         except (AttributeError, ValueError):
+            if not (answer := recover_router_json(reply)):
+                logging.warning(f"Satellite: bad router reply {reply!r}")
+                return None, None, False
+            logging.info(f"Satellite: recovered broken router JSON {reply!r}")
+        if not isinstance(answer, dict):
             logging.warning(f"Satellite: bad router reply {reply!r}")
             return None, None, False
         query, draw = answer.get("search"), answer.get("draw")
+        draw = draw.strip() if isinstance(draw, str) and draw.strip() else None
         return (
             query.strip() if isinstance(query, str) and query.strip() else None,
-            draw.strip() if isinstance(draw, str) and draw.strip() else None,
-            answer.get("panic") is True,
+            draw,
+            # a draw request is never a threat ("сделай картинку ... сачок" screamed instead of drawing)
+            answer.get("panic") is True and not draw,
         )
 
     async def search(self, query: str) -> list[dict[str, str]]:
         """Top results as dict(title, content, date), from the backend in `search:`."""
+        limit = self.results
         if self.backend == "tavily":
             resp = await self.http.post(
                 "https://api.tavily.com/search",
                 headers={"Authorization": f"Bearer {self.search_key}"},
-                json=dict(query=query, max_results=self.results, search_depth="basic", topic="general"),
+                json=dict(query=query, max_results=self.results, search_depth="basic", topic="general", include_answer="basic"),
                 timeout=10,
             )
-            raw = [(r.get("title"), r.get("content"), r.get("published_date")) for r in self._json(resp).get("results", [])]
+            body = self._json(resp)
+            # Tavily's own short answer first: it often has the fact (weather, a score) that the snippets only hint at
+            raw = [("Tavily answer", answer, "")] if isinstance(answer := body.get("answer"), str) and answer.strip() else []
+            limit += len(raw)
+            raw += [(r.get("title"), r.get("content"), r.get("published_date")) for r in body.get("results", [])]
         elif self.backend == "exa":
             resp = await self.http.post(
                 "https://api.exa.ai/search",
@@ -177,7 +215,7 @@ class Satellite:
 
         results = []
         for title, content, date in raw:
-            if (content := " ".join((content or "").split())) and len(results) < self.results:
+            if (content := " ".join((content or "").split())) and len(results) < limit:
                 results.append(dict(title=title or "", content=content[: self.snippet_chars], date=(date or "")[:10]))
         return results
 
@@ -217,16 +255,17 @@ class Satellite:
         return trace
 
 
-async def notes(messages: list[dict[str, Any]], lang: str, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient) -> tuple[list[str], str | None, bool]:
+async def notes(messages: list[dict[str, Any]], lang: str, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient) -> tuple[list[str], str | None, bool, str | None]:
     """The notes for Scintilla's next reply ([] if none, on errors or after `timeout` seconds), the draw request for
-    imagegen.py (None if nobody asked her to draw) and whether she panics (a slipper, jar, net... aimed at her)."""
+    imagegen.py (None if nobody asked her to draw), whether she panics (a slipper, jar, net... aimed at her) and the
+    fact found on the web (None if none; imagegen.py uses it to draw recent people and things right)."""
     started = asyncio.get_running_loop().time()
     try:
         trace = await asyncio.wait_for(Satellite(cfg, providers, http).run(messages, lang), cfg.get("timeout", 5))
     except Exception as e:
         logging.warning(f"Satellite: no note ({type(e).__name__}: {e})")
         viewer.stage("satellite", "error", error=f"{type(e).__name__}: {e}")
-        return [], None, False
+        return [], None, False, None
     viewer.stage("satellite", "done", **trace)
     logging.info(f"Satellite ({asyncio.get_running_loop().time() - started:.1f} s): query={trace['query']!r} draw={trace['draw']!r} panic={trace['panic']} fact={trace['fact']!r}")
-    return ([trace["note"]] if trace["note"] else []), trace["draw"], trace["panic"]
+    return ([trace["note"]] if trace["note"] else []), trace["draw"], trace["panic"], trace["fact"]
