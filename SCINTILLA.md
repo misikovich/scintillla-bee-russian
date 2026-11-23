@@ -46,7 +46,7 @@ Before she answers, a second call to the same DeepSeek model (`satellite.py`, `s
 whether the newest message needs fresh facts. If so, it searches Tavily or Exa (`TAVILY_API_KEY`/`EXA_API_KEY` in `.env`)
 or the self-hosted SearXNG (the `searxng` service in `docker-compose.yaml`) and turns the results into a one- or two-sentence note for her
 reply. "кто выиграл последний чм по футболу?" → "бззз Испания, Петь, бззз. аргентинцев в допах дожали, бжжж". The whole
-thing has a 5 s deadline; on a miss or error she answers without the note. Delete the `satellite:` block to turn it off.
+thing has an 8 s deadline (restarted when it falls back to OpenRouter); on a miss or error she answers without the note. Delete the `satellite:` block to turn it off.
 
 ## Drawing
 

@@ -90,9 +90,10 @@ satellite:
   searxng_url: http://searxng:8080
   results: 5
   snippet_chars: 500
-  timeout: 5
-  # seconds each call to `model` may take before it falls back (so a slow Mistral route/summarize still reaches OpenRouter within `timeout`)
-  attempt_timeout: 2.5
+  # seconds for route + search + summary; restarted when a call falls back, so the fallback gets all of it
+  timeout: 8
+  # seconds each call to `model` may take before it falls back
+  attempt_timeout: 4
 
 # Image generation (imagegen.py): when the satellite's router sees a request to draw (or to change a picture), `writer`
 # (a vision model, low reasoning) writes the image prompt from the request, the chat and the attached pictures, `model`

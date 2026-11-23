@@ -3,7 +3,8 @@ facts she can't know (news, results, releases, "latest"/"current" things, niche 
 her a short note. She never calls tools herself: her prompt stays as tuned, she just gets one more system
 note next to the speaker hint (bee.prepare(notes=...)).
 
-Steps, all within `timeout` seconds (any failure or timeout: she answers without a note):
+Steps, all within `timeout` seconds, restarted whenever a call falls back to `fallback` (on a failure or timeout after
+the route step she answers without a note; when the route step itself fails, with BROKEN_NOTES):
 1. route:     the satellite model says {"search": "<query>" or null, "draw": "<request>" or null, "panic": bool}; a
               draw request goes to imagegen.py (after this, with its own timeouts); panic (a slipper, jar, net... aimed
               at her) makes llmcord send `panic_sound` instead of a text reply
@@ -79,6 +80,13 @@ NOTHING_FOUND = {
     "en": "You searched the web for this but found nothing reliable. Don't make things up or guess: say so, buzzing.",
 }
 
+# The route step failed even with the fallback, so nobody knows whether she was asked to draw. Without this she answered
+# a draw request with "I buzz, I don't draw". Goes after the newest message, like imagegen's notes
+BROKEN_NOTES = {
+    "ru": "Если в этом сообщении тебя просят нарисовать или переделать картинку: ты не смогла, что-то сломалось на твоей стороне. Скажи это по-пчелиному, пусть попробуют ещё раз. Если не просят, отвечай как обычно и про поломку не говори.",
+    "en": "If this message asks you to draw or change a picture: you couldn't, something broke on your side. Say so, buzzing; they can try again. If it doesn't, answer as usual and don't mention it.",
+}
+
 LANGUAGES = {"ru": "Russian", "en": "English"}
 
 JSON_RE = re.compile(r"\{.*\}", re.S)
@@ -138,11 +146,17 @@ def transcript(messages: list[dict[str, Any]], turns: int = 4) -> str:
 
 class Satellite:
     def __init__(self, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient):
-        # Each try gets its own read timeout when there's a fallback, so a slow first model leaves the fallback time
-        # within `timeout`
+        # With a fallback the first model gets its own read timeout, so a slow one gives way to the fallback, which then
+        # gets the whole `timeout` again (restart_deadline)
+        self.timeout = cfg.get("timeout", 8)
         attempt_timeout = cfg.get("attempt_timeout")
         if attempt_timeout is None and cfg.get("fallback"):
-            attempt_timeout = min(2.5, cfg.get("timeout", 5) / 2)
+            attempt_timeout = min(4, self.timeout / 2)
+        # notes() sets it: the asyncio.timeout() around run()
+        self.deadline: asyncio.Timeout | None = None
+        # run()'s progress, kept when the deadline cuts it short after the route step
+        self.trace: dict[str, Any] = dict(query=None, draw=None, panic=False, results=[], fact=None, note=None)
+        self.routed = False
         self.tries = fallback.attempts(
             cfg["model"], cfg.get("params"), cfg.get("fallback"), cfg.get("fallback_params"), providers, read_timeout=attempt_timeout)
         self.backend = cfg.get("search", "searxng")
@@ -155,9 +169,14 @@ class Satellite:
         self.snippet_chars = cfg.get("snippet_chars", 500)
         self.http = http
 
+    def restart_deadline(self) -> None:
+        """The first model failed: its fallback gets the whole `timeout`, not what's left of it."""
+        if self.deadline:
+            self.deadline.reschedule(asyncio.get_running_loop().time() + self.timeout)
+
     async def ask(self, system: str, user: str, max_tokens: int, what: str = "ask") -> str:
         return await fallback.complete(
-            self.tries, "satellite", what, lambda resp: text_of(resp.choices[0].message.content).strip(),
+            self.tries, "satellite", what, lambda resp: text_of(resp.choices[0].message.content).strip(), self.restart_deadline,
             messages=[dict(role="system", content=system), dict(role="user", content=user)],
             max_tokens=max_tokens,
             temperature=0,
@@ -239,9 +258,10 @@ class Satellite:
     async def run(self, messages: list[dict[str, Any]], lang: str) -> dict[str, Any]:
         """Everything the satellite did, for logs and tests: query, results, fact, note (None when nothing to add)."""
         today = datetime.now().astimezone().strftime("%Y-%m-%d")
-        trace: dict[str, Any] = dict(query=None, draw=None, panic=False, results=[], fact=None, note=None)
+        trace = self.trace
         viewer.stage("satellite", "running", step="route", backend=self.backend, transcript=transcript(messages))
         trace["query"], trace["draw"], trace["panic"] = await self.route(messages, today)
+        self.routed = True
         if not trace["query"] or trace["panic"]:  # panicking, she sends a sound, no reply to put a fact in
             return trace
         viewer.stage("satellite", "running", step="search", query=trace["query"], draw=trace["draw"])
@@ -255,17 +275,28 @@ class Satellite:
         return trace
 
 
-async def notes(messages: list[dict[str, Any]], lang: str, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient) -> tuple[list[str], str | None, bool, str | None]:
-    """The notes for Scintilla's next reply ([] if none, on errors or after `timeout` seconds), the draw request for
-    imagegen.py (None if nobody asked her to draw), whether she panics (a slipper, jar, net... aimed at her) and the
-    fact found on the web (None if none; imagegen.py uses it to draw recent people and things right)."""
+async def notes(
+    messages: list[dict[str, Any]], lang: str, cfg: dict[str, Any], providers: dict[str, Any], http: httpx.AsyncClient,
+) -> tuple[list[str], list[str], str | None, bool, str | None]:
+    """The notes for Scintilla's next reply ([] if none, on errors or after `timeout` seconds), the notes to put after
+    the newest message (BROKEN_NOTES when the route step failed), the draw request for imagegen.py (None if nobody asked
+    her to draw), whether she panics (a slipper, jar, net... aimed at her) and the fact found on the web (None if none;
+    imagegen.py uses it to draw recent people and things right)."""
     started = asyncio.get_running_loop().time()
+    sat = Satellite(cfg, providers, http)
+    trace = sat.trace
     try:
-        trace = await asyncio.wait_for(Satellite(cfg, providers, http).run(messages, lang), cfg.get("timeout", 5))
+        async with asyncio.timeout(sat.timeout) as sat.deadline:
+            await sat.run(messages, lang)
     except Exception as e:
-        logging.warning(f"Satellite: no note ({type(e).__name__}: {e})")
-        viewer.stage("satellite", "error", error=f"{type(e).__name__}: {e}")
-        return [], None, False, None
+        error = f"{type(e).__name__}: {e}"
+        viewer.stage("satellite", "error", **trace, error=error)
+        if not sat.routed:
+            logging.warning(f"Satellite: route failed ({error}), telling her drawing is broken")
+            return [], [BROKEN_NOTES[lang]], None, False, None
+        # The search or summary failed: the route's draw request and panic still count
+        logging.warning(f"Satellite: no note ({error}); draw={trace['draw']!r} panic={trace['panic']}")
+        return [], [], trace["draw"], trace["panic"], None
     viewer.stage("satellite", "done", **trace)
     logging.info(f"Satellite ({asyncio.get_running_loop().time() - started:.1f} s): query={trace['query']!r} draw={trace['draw']!r} panic={trace['panic']} fact={trace['fact']!r}")
-    return ([trace["note"]] if trace["note"] else []), trace["draw"], trace["panic"], trace["fact"]
+    return ([trace["note"]] if trace["note"] else []), [], trace["draw"], trace["panic"], trace["fact"]

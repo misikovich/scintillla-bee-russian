@@ -54,7 +54,7 @@ MiniCPM) was removed in 2026-11 and lives only in git history. See `SCINTILLA.md
 
 OpenRouter (`OPENROUTER_API_KEY`, the same DeepSeek) is the fallback for her model (`fallback:`/`fallback_params:` in
 its `models:` entry), the satellite (`fallback:` in `satellite:`) and the draw writer (`writer_fallback:`). Any error
-falls back; the first model has no retries and a 5 s connect timeout (`attempt_timeout: 2.5` for the satellite). Her
+falls back; the first model has no retries and a 5 s connect timeout (`attempt_timeout: 4` for the satellite). Her
 stream falls back only before its first chunk. OpenRouter needs `reasoning: {enabled: false}` (it reasons by default and
 eats max_tokens). Logged as "... falling back to".
 
@@ -66,8 +66,13 @@ She never calls tools herself (that would disturb the tuned prompt). Before `bee
    to SearXNG
 3. summarize: at most two plain facts (or NONE), so raw web text and any instructions in it never reach her prompt
 
-The note goes in as a system message before the speaker hint, for this reply only. 5 s deadline for all three steps;
-errors mean no note. It runs inside `min_reply_delay`, so users don't wait longer.
+The note goes in as a system message before the speaker hint, for this reply only. 8 s deadline for all three steps,
+restarted when a call falls back (a slow Mistral used to leave OpenRouter ~2.5 s, too little); errors mean no note. It
+usually runs inside `min_reply_delay`, so users don't wait longer.
+
+- Route failed (even the fallback): she gets `BROKEN_NOTES` after the newest message ("if asked to draw: you couldn't,
+  something broke on your side"); without it she answered a draw request with "I don't draw". A failure after the route
+  step keeps its draw/panic.
 
 - A search that finds nothing gives her a "you searched, found nothing, don't guess" note (without it she made things
   up and told people to google it themselves).

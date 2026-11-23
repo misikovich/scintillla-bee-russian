@@ -56,8 +56,11 @@ def log_failure(attempt: Attempt, e: Exception, next_attempt: Attempt) -> None:
     logging.warning(f"{attempt[1]} failed ({type(e).__name__}: {e}), falling back to {next_attempt[1]} at {next_attempt[0].base_url}")
 
 
-async def complete(tries: list[Attempt], stage: str, what: str, reply: Callable[[Any], str], **kwargs: Any) -> str:
-    """chat.completions.create, non-streaming; returns reply(response). Each try is recorded in the viewer (stage, what)."""
+async def complete(
+    tries: list[Attempt], stage: str, what: str, reply: Callable[[Any], str], on_fallback: Callable[[], None] | None = None, **kwargs: Any,
+) -> str:
+    """chat.completions.create, non-streaming; returns reply(response). Each try is recorded in the viewer (stage, what).
+    on_fallback() runs before each fallback try (the satellite restarts its deadline there)."""
     for i, (api, model, body) in enumerate(tries):
         try:
             with viewer.timed(stage, what, model=model) as call:
@@ -69,6 +72,8 @@ async def complete(tries: list[Attempt], stage: str, what: str, reply: Callable[
             if i == len(tries) - 1:
                 raise
             log_failure(tries[i], e, tries[i + 1])
+            if on_fallback:
+                on_fallback()
 
 
 async def stream(tries: list[Attempt], **kwargs: Any) -> AsyncIterator[Any]:

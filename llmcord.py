@@ -372,7 +372,7 @@ async def reply_to(new_msg: discord.Message, config: dict[str, Any], received_at
         if satellite_cfg := config.get("satellite"):
             async with new_msg.channel.typing():
                 lang = bee.reply_language(messages)
-                notes, draw_request, panic, fact = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
+                notes, final_notes, draw_request, panic, fact = await satellite.notes(messages, lang, satellite_cfg, config["providers"], httpx_client)
                 # Threatened with a slipper/jar/net: she sends `panic_sound` instead of a text reply
                 if panic and (panic_sound := config.get("panic_sound")) and not os.path.isfile(panic_sound):
                     logging.warning(f"panic_sound {panic_sound!r} not found, answering with text")
