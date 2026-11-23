@@ -1,105 +1,154 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 596" width="820" height="596" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 708" width="1000" height="708" role="img" aria-labelledby="t d">
   <title id="t">How Scintilla answers</title>
-  <desc id="d">The satellite model reads the current message, decides whether to search, searches Tavily, Exa or SearXNG, and summarizes the results into a search context that is injected into the chat model's prompt. The chat model reads system context, message history, search context and the current message, and its response is sent as a Discord reply and becomes history.</desc>
+  <desc id="d">A new Discord message goes to two models at once. The satellite's router reads the last four turns and decides whether to search the web or draw a picture. Web search queries Tavily, Exa or SearXNG and summarizes the results into one or two facts, which become a search note in her prompt. Drawing has a vision prompt writer write an image prompt and an image model on OpenRouter draw it; a draw note goes into her prompt and the picture is attached to the reply. Her prompt is the persona with example dialogues, the reply chain, the search note, the newest message with a note on who is writing, and the draw note. The chat model answers, an output guard cleans the reply, and it is sent to Discord. Every model call can fall back to another provider, and a live viewer records every turn.</desc>
   <style>
-    .bg { fill: #fdfcf9; }
-    .box { fill: #ffffff; stroke: #9a9488; stroke-width: 2; }
-    .frame { fill: none; stroke: #c9c3b6; stroke-width: 1.5; stroke-dasharray: 6 5; }
-    .blue { fill: #eef3fd; stroke: #4f7fd8; stroke-width: 2; }
-    .red { fill: #fdf0f0; stroke: #d9605f; stroke-width: 2; }
-    .green { fill: #eef7ef; stroke: #3f9150; stroke-width: 2; }
+    .bg { fill: #fbfaf7; }
+    .card { fill: #ffffff; stroke: #c8c2b6; stroke-width: 1.5; }
+    .key { fill: #ffffff; stroke: #4a453d; stroke-width: 2; }
+    .panel { fill: #f4f1ea; stroke: #ddd7cb; stroke-width: 1.2; }
+    .sat { fill: none; stroke: #b5aea0; stroke-width: 1.5; stroke-dasharray: 7 5; }
+    .bee { fill: #f4f1ea; stroke: #3f9150; stroke-width: 1.8; }
+    .foot { fill: none; stroke: #ddd7cb; stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .p-blue { fill: #eef3fc; stroke: #b9cdf2; stroke-width: 1.2; }
+    .p-amber { fill: #fcf5e6; stroke: #ecd3a3; stroke-width: 1.2; }
+    .s-blue { fill: #eef3fc; stroke: #4f7fd8; stroke-width: 1.5; }
+    .s-amber { fill: #fcf5e6; stroke: #c98620; stroke-width: 1.5; }
+    .s-key { fill: #ffffff; stroke: #4a453d; stroke-width: 1.5; }
+    .green { fill: #edf6ee; stroke: #3f9150; stroke-width: 1.5; }
     .ink { fill: #23201b; }
-    .mute { fill: #7b7468; }
+    .mute { fill: #6e675c; }
     .tb { fill: #2f62c4; }
-    .tr { fill: #c14544; }
-    .tg { fill: #2f7d3f; }
+    .ta { fill: #9a600c; }
+    .tg { fill: #2c7a3c; }
     .w { stroke: #8e877a; stroke-width: 2; fill: none; }
-    .wr { stroke: #d9605f; stroke-width: 2; fill: none; }
+    .wb { stroke: #4f7fd8; stroke-width: 2; fill: none; }
+    .wa { stroke: #c98620; stroke-width: 2; fill: none; }
     .wg { stroke: #3f9150; stroke-width: 2; fill: none; }
-    .wgd { stroke: #3f9150; stroke-width: 2; fill: none; stroke-dasharray: 5 5; }
-    .k { fill: #8e877a; } .kr { fill: #d9605f; } .kg { fill: #3f9150; }
+    .k { fill: #8e877a; } .kb { fill: #4f7fd8; } .ka { fill: #c98620; } .kg { fill: #3f9150; }
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
     .h1 { font-size: 22px; font-weight: 700; }
-    .hd { font-size: 16px; font-weight: 700; }
-    .l { font-size: 15px; font-weight: 600; }
-    .s { font-size: 11.5px; }
+    .hd { font-size: 14px; font-weight: 700; letter-spacing: 0.2px; }
+    .l { font-size: 14.5px; font-weight: 600; }
+    .lb { font-size: 13px; font-weight: 700; }
+    .s { font-size: 12px; }
+    .xs { font-size: 11px; }
     @media (prefers-color-scheme: dark) {
       .bg { fill: #121212; }
-      .box { fill: #121212; stroke: #d6d6d6; }
-      .frame { stroke: #4a4a4a; }
-      .blue { fill: #121a2a; stroke: #6c9be8; }
-      .red { fill: #2a1616; stroke: #f08a89; }
+      .card { fill: #1b1b1b; stroke: #4a4a4a; }
+      .key { fill: #1b1b1b; stroke: #d0d0d0; }
+      .panel { fill: #191919; stroke: #333333; }
+      .foot { stroke: #3a3a3a; }
+      .sat { stroke: #5a5a5a; }
+      .bee { fill: #191919; stroke: #5aa865; }
+      .p-blue { fill: #121a29; stroke: #2a3d63; }
+      .p-amber { fill: #221a0e; stroke: #5a4219; }
+      .s-blue { fill: #142035; stroke: #6c9be8; }
+      .s-amber { fill: #2a1f0f; stroke: #e3a745; }
+      .s-key { fill: #1b1b1b; stroke: #d0d0d0; }
       .green { fill: #13221a; stroke: #5aa865; }
       .ink { fill: #ececec; }
       .mute { fill: #a3a3a3; }
       .tb { fill: #8fb4f2; }
-      .tr { fill: #f4a3a2; }
+      .ta { fill: #f0c06c; }
       .tg { fill: #7cc487; }
-      .w { stroke: #d6d6d6; } .k { fill: #d6d6d6; }
-      .wr { stroke: #f08a89; } .kr { fill: #f08a89; }
-      .wg, .wgd { stroke: #5aa865; } .kg { fill: #5aa865; }
+      .w { stroke: #9a9a9a; } .k { fill: #9a9a9a; }
+      .wb { stroke: #6c9be8; } .kb { fill: #6c9be8; }
+      .wa { stroke: #e3a745; } .ka { fill: #e3a745; }
+      .wg { stroke: #5aa865; } .kg { fill: #5aa865; }
     }
   </style>
   <defs>
     <marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="k" d="M0 0 L10 5 L0 10 z"/></marker>
-    <marker id="mr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kr" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="mb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kb" d="M0 0 L10 5 L0 10 z"/></marker>
+    <marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="ka" d="M0 0 L10 5 L0 10 z"/></marker>
     <marker id="mg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="kg" d="M0 0 L10 5 L0 10 z"/></marker>
   </defs>
 
-  <rect class="bg" width="820" height="596" rx="16"/>
-  <text class="ink h1" x="32" y="46">How Scintilla answers</text>
-  <text class="mute s" x="32" y="68">Two models, both on an OpenAI-compatible API.</text>
+  <rect class="bg" width="1000" height="708" rx="16"/>
+  <text class="ink h1" x="32" y="44">How Scintilla answers</text>
+  <text class="mute s" x="32" y="66">Each message goes to two models: the satellite decides what she needs, Scintilla answers. She only sees its short notes.</text>
 
-  <!-- chat model -->
-  <rect class="frame" x="440" y="92" width="340" height="268" rx="14"/>
-  <text class="ink hd" x="460" y="118">Chat model (Scintilla)</text>
+  <!-- 1. Message, to both models -->
+  <rect class="key" x="370" y="88" width="260" height="52" rx="12"/>
+  <text class="ink l" x="500" y="110" text-anchor="middle">New message</text>
+  <text class="mute xs" x="500" y="127" text-anchor="middle">@mention, “пчол…”, or a reply to her</text>
+  <path class="w" d="M500 140 V160 H320 V220" marker-end="url(#m)"/>
+  <path class="w" d="M500 160 H790 V174" marker-end="url(#m)"/>
 
-  <rect class="blue" x="460" y="132" width="300" height="46" rx="10"/>
-  <text class="tb l" x="610" y="152" text-anchor="middle">System context</text>
-  <text class="mute s" x="610" y="169" text-anchor="middle">persona + example dialogues</text>
+  <!-- 2. Satellite -->
+  <rect class="sat" x="32" y="176" width="536" height="376" rx="16"/>
+  <text class="ink hd" x="48" y="199">Satellite</text>
+  <text class="mute xs" x="48" y="215">helper models, never talk in chat</text>
 
-  <rect class="blue" x="460" y="188" width="300" height="46" rx="10"/>
-  <text class="tb l" x="610" y="216" text-anchor="middle">Message history</text>
+  <rect class="card" x="230" y="222" width="180" height="50" rx="12"/>
+  <text class="ink l" x="320" y="243" text-anchor="middle">Router</text>
+  <text class="mute xs" x="320" y="260" text-anchor="middle">last 4 turns: search? draw?</text>
+  <path class="wa" d="M320 272 V288 H170 V306" marker-end="url(#ma)"/>
+  <path class="wb" d="M320 288 H430 V306" marker-end="url(#mb)"/>
 
-  <rect class="blue" x="460" y="244" width="300" height="46" rx="10"/>
-  <text class="tb l" x="610" y="272" text-anchor="middle">Search context</text>
+  <rect class="p-amber" x="48" y="308" width="244" height="160" rx="14"/>
+  <text class="ta hd" x="64" y="331">Drawing</text>
+  <text class="mute xs" x="276" y="331" text-anchor="end">asked to draw or edit</text>
+  <rect class="card" x="64" y="344" width="212" height="46" rx="10"/>
+  <text class="ink l" x="170" y="364" text-anchor="middle">Prompt writer</text>
+  <text class="mute xs" x="170" y="380" text-anchor="middle">vision model: request, chat, images</text>
+  <path class="wa" d="M170 390 V406" marker-end="url(#ma)"/>
+  <rect class="card" x="64" y="408" width="212" height="46" rx="10"/>
+  <text class="ink l" x="170" y="428" text-anchor="middle">Image model</text>
+  <text class="mute xs" x="170" y="444" text-anchor="middle">OpenRouter Images, free → paid</text>
 
-  <rect class="red" x="460" y="300" width="300" height="46" rx="10"/>
-  <text class="tr l" x="610" y="320" text-anchor="middle">Current turn message</text>
-  <text class="mute s" x="610" y="337" text-anchor="middle">+ a note on who's writing now</text>
+  <rect class="p-blue" x="308" y="308" width="244" height="160" rx="14"/>
+  <text class="tb hd" x="324" y="331">Web search</text>
+  <text class="mute xs" x="536" y="331" text-anchor="end">needs fresh facts</text>
+  <rect class="card" x="324" y="344" width="212" height="46" rx="10"/>
+  <text class="ink l" x="430" y="364" text-anchor="middle">Search</text>
+  <text class="mute xs" x="430" y="380" text-anchor="middle">Tavily · Exa · SearXNG, top 5</text>
+  <path class="wb" d="M430 390 V406" marker-end="url(#mb)"/>
+  <rect class="card" x="324" y="408" width="212" height="46" rx="10"/>
+  <text class="ink l" x="430" y="428" text-anchor="middle">Summarize</text>
+  <text class="mute xs" x="430" y="444" text-anchor="middle">1–2 plain facts, no raw web text</text>
 
-  <path class="wg" d="M610 362 V398" marker-end="url(#mg)"/>
-  <rect class="green" x="460" y="400" width="300" height="46" rx="10"/>
-  <text class="tg l" x="610" y="428" text-anchor="middle">Bee's response</text>
+  <!-- 3. Scintilla -->
+  <rect class="bee" x="612" y="176" width="356" height="376" rx="16"/>
+  <text class="tg hd" x="628" y="199">Scintilla <tspan class="mute xs" font-weight="400">· the chat model, in character</tspan></text>
+  <text class="mute xs" x="628" y="221">her prompt, built fresh every reply (bee.py):</text>
 
-  <path class="wg" d="M610 448 V510" marker-end="url(#mg)"/>
-  <rect class="box" x="460" y="512" width="300" height="56" rx="12"/>
-  <text class="ink l" x="610" y="545" text-anchor="middle">Discord reply</text>
+  <rect class="card" x="628" y="236" width="324" height="44" rx="8"/>
+  <text class="ink lb" x="642" y="254">Persona</text>
+  <text class="mute xs" x="642" y="270">who she is + RU / EN example dialogues</text>
 
-  <!-- both become history for the next turn -->
-  <path class="wgd" d="M762 423 H800 V211 H766" marker-end="url(#mg)"/>
-  <path class="wgd" d="M762 323 H800"/>
-  <text class="tg s" transform="translate(812 318) rotate(90)" text-anchor="middle">next turn: history</text>
+  <rect class="card" x="628" y="288" width="324" height="44" rx="8"/>
+  <text class="ink lb" x="642" y="306">Reply chain</text>
+  <text class="mute xs" x="642" y="322">“Name: text” turns, images, her own replies</text>
 
-  <!-- satellite -->
-  <rect class="frame" x="40" y="282" width="300" height="236" rx="14"/>
-  <text class="ink hd" x="60" y="306">Satellite model</text>
+  <rect class="s-blue" x="628" y="340" width="324" height="44" rx="8"/>
+  <text class="tb lb" x="642" y="358">Search note</text>
+  <text class="mute xs" x="642" y="374">the facts, or “searched, found nothing”</text>
 
-  <rect class="box" x="60" y="318" width="260" height="44" rx="10"/>
-  <text class="ink l" x="190" y="345" text-anchor="middle">Search decision</text>
-  <path class="w" d="M190 364 V384" marker-end="url(#m)"/>
-  <rect class="box" x="60" y="386" width="260" height="44" rx="10"/>
-  <text class="ink l" x="190" y="413" text-anchor="middle">Tavily / Exa / SearXNG search</text>
-  <path class="w" d="M190 432 V452" marker-end="url(#m)"/>
-  <rect class="box" x="60" y="454" width="260" height="44" rx="10"/>
-  <text class="ink l" x="190" y="481" text-anchor="middle">Summarize</text>
+  <rect class="s-key" x="628" y="392" width="324" height="44" rx="8"/>
+  <text class="ink lb" x="642" y="410">Newest message</text>
+  <text class="mute xs" x="642" y="426">+ a note on who's writing now</text>
 
+  <rect class="s-amber" x="628" y="444" width="324" height="44" rx="8"/>
+  <text class="ta lb" x="642" y="462">Draw note</text>
+  <text class="mute xs" x="642" y="478">what she drew, or why she didn't</text>
 
-  <!-- current message -> decision -->
-  <path class="wr" d="M458 331 H322" marker-end="url(#mr)"/>
-  <text class="tr s" x="390" y="324" text-anchor="middle">reads</text>
+  <rect class="green" x="628" y="498" width="324" height="38" rx="8"/>
+  <text class="tg lb" x="790" y="522" text-anchor="middle">DeepSeek v4.1 Flash answers as her</text>
 
-  <!-- summarize -> inject -> search context -->
-  <path class="w" d="M60 476 H24 V267 H458" marker-end="url(#m)"/>
-  <text class="ink s" x="250" y="259" text-anchor="middle" font-weight="700">inject (a 1–2 fact note)</text>
+  <!-- Satellite -> Scintilla -->
+  <path class="wb" d="M536 431 H590 V362 H626" marker-end="url(#mb)"/>
+  <path class="wa" d="M170 454 V512 H590 V466 H626" marker-end="url(#ma)"/>
+  <path class="wa" d="M590 512 V602 H610" marker-end="url(#ma)"/>
+  <text class="ta xs" x="582" y="590" text-anchor="end">picture</text>
+
+  <!-- 4. Reply -->
+  <path class="wg" d="M790 552 V574" marker-end="url(#mg)"/>
+  <rect class="key" x="612" y="576" width="356" height="52" rx="12"/>
+  <text class="ink l" x="790" y="598" text-anchor="middle">Discord reply</text>
+  <text class="mute xs" x="790" y="615" text-anchor="middle">guarded against loops and fake image links</text>
+
+  <!-- Footer -->
+  <rect class="foot" x="32" y="652" width="936" height="36" rx="10"/>
+  <text class="mute s" x="500" y="674" text-anchor="middle">Every model call can fall back to another provider (fallback.py)  ·  a live viewer records every turn (viewer.py)</text>
 </svg>
